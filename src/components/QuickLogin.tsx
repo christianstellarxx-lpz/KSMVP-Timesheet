@@ -25,7 +25,7 @@ export function QuickLogin({
   return (
     <div className="space-y-4">
       <Box title="Admins" users={admins} onPick={setSelected} />
-      <Box title="Virtual Assistants & Interns" users={team} onPick={setSelected} />
+      <Box title="Virtual Team" users={team} onPick={setSelected} />
 
       {selected && (
         <PinModal user={selected} onClose={() => setSelected(null)} />

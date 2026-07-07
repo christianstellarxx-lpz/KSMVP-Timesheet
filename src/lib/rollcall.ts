@@ -119,12 +119,12 @@ export async function getTodayRollCall(
   const adminEmails = admins.map((a) => a.email);
   const start = buildEmail(
     `VA Start-of-Day Report — ${dateLabel}`,
-    buildStartSummary(dateLabel, rows, reporterName),
+    buildNotification("Start-of-Day", dateLabel, reporterName),
     adminEmails,
   );
   const end = buildEmail(
     `VA End-of-Day Report — ${dateLabel}`,
-    buildEndSummary(dateLabel, rows, reporterName),
+    buildNotification("End-of-Day", dateLabel, reporterName),
     adminEmails,
   );
 
@@ -157,97 +157,22 @@ function buildEmail(subject: string, body: string, to: string[]): RollEmail {
   };
 }
 
-/** Morning report — sent once everyone has clocked in. */
-function buildStartSummary(
+/**
+ * A short notification email — no names or per-person details. Just says the
+ * report is ready and links to the app to view it.
+ */
+function buildNotification(
+  kind: "Start-of-Day" | "End-of-Day",
   dateLabel: string,
-  rows: RollRow[],
   reporterName: string,
 ): string {
-  const lines: string[] = [`VA Start-of-Day Report — ${dateLabel}`, ""];
-  const group = (state: RollState) => rows.filter((r) => r.state === state);
-
-  // Anyone with a time-in (still in, already out, or missing a clock-out).
-  const clockedIn = rows.filter(
-    (r) => r.state === "IN" || r.state === "OUT" || r.state === "INCOMPLETE",
-  );
-  if (clockedIn.length) {
-    lines.push(`Clocked in (${clockedIn.length}):`);
-    clockedIn.forEach((r) =>
-      lines.push(`  - ${r.name}: in at ${r.timeInLabel} ET`),
-    );
-    lines.push("");
-  }
-
-  const pto = group("PTO");
-  if (pto.length) {
-    lines.push(`PTO / Vacation (${pto.length}):`);
-    pto.forEach((r) => lines.push(`  - ${r.name}`));
-    lines.push("");
-  }
-
-  const none = group("NONE");
-  if (none.length) {
-    lines.push(`Not started (${none.length}):`);
-    none.forEach((r) => lines.push(`  - ${r.name}`));
-    lines.push("");
-  }
-
-  lines.push(`Open KSMVP VA Tasks: ${APP_LOGIN_URL}`);
-  lines.push("");
-  lines.push(`Prepared by ${reporterName} · KSMVP VA Tasks`);
-  return lines.join("\n");
-}
-
-/** End-of-day report — sent once everyone has clocked out. */
-function buildEndSummary(
-  dateLabel: string,
-  rows: RollRow[],
-  reporterName: string,
-): string {
-  const lines: string[] = [`VA End-of-Day Report — ${dateLabel}`, ""];
-  const group = (state: RollState) => rows.filter((r) => r.state === state);
-
-  const out = group("OUT");
-  if (out.length) {
-    lines.push(`Clocked out (${out.length}):`);
-    out.forEach((r) =>
-      lines.push(
-        `  - ${r.name}: ${r.timeInLabel} – ${r.timeOutLabel} ET (${r.hoursWorked ?? 0}h)`,
-      ),
-    );
-    lines.push("");
-  }
-
-  const inn = group("IN");
-  if (inn.length) {
-    lines.push(`Still clocked in (${inn.length}):`);
-    inn.forEach((r) => lines.push(`  - ${r.name}: in at ${r.timeInLabel} ET`));
-    lines.push("");
-  }
-
-  const pto = group("PTO");
-  if (pto.length) {
-    lines.push(`PTO / Vacation (${pto.length}):`);
-    pto.forEach((r) => lines.push(`  - ${r.name}`));
-    lines.push("");
-  }
-
-  const inc = group("INCOMPLETE");
-  if (inc.length) {
-    lines.push(`Needs review — clocked in, no clock-out (${inc.length}):`);
-    inc.forEach((r) => lines.push(`  - ${r.name}: in at ${r.timeInLabel} ET`));
-    lines.push("");
-  }
-
-  const none = group("NONE");
-  if (none.length) {
-    lines.push(`Not started (${none.length}):`);
-    none.forEach((r) => lines.push(`  - ${r.name}`));
-    lines.push("");
-  }
-
-  lines.push(`Open KSMVP VA Tasks: ${APP_LOGIN_URL}`);
-  lines.push("");
-  lines.push(`Prepared by ${reporterName} · KSMVP VA Tasks`);
-  return lines.join("\n");
+  return [
+    "Hi team,",
+    "",
+    `The ${kind} report for ${dateLabel} is ready.`,
+    "",
+    `Click the link to view it: ${APP_LOGIN_URL}`,
+    "",
+    `Prepared by ${reporterName} · KSMVP VA Tasks`,
+  ].join("\n");
 }
