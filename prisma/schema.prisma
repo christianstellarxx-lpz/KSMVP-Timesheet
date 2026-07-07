@@ -1,0 +1,102 @@
+// KSMVP VA Tasks — data model
+// All timestamps are stored in UTC and displayed in America/New_York (ET).
+//
+// DATABASE: this schema is portable across SQLite (zero-setup local dev) and
+// PostgreSQL (production). To use Postgres, change `provider` to "postgresql"
+// and point DATABASE_URL at your instance — no other edits required.
+//
+// Because it targets SQLite too, roles/status are stored as strings (validated
+// in app code) rather than DB enums, hours are Float, and workDate is a plain
+// DateTime anchored to ET-midnight UTC. See src/lib/time.ts.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite" // dev default; switch to "postgresql" for production
+  url      = env("DATABASE_URL")
+}
+
+// Role values: "ADMIN" | "VA_ADMIN" | "VA" | "INTERN"   (see src/lib/session.ts)
+// EntryStatus values: "OPEN" | "CLOSED" | "INCOMPLETE"
+
+model User {
+  id           String   @id @default(cuid())
+  role         String
+  name         String
+  title        String   @default("") // job position, e.g. "Chief Executive Officer"
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  // Reserved for future per-manager assignment; not used for scoping today
+  // (the admin dashboard is org-wide). Kept as a self-relation.
+  clientId String?
+  client   User?   @relation("ClientVAs", fields: [clientId], references: [id], onDelete: SetNull)
+  vas      User[]  @relation("ClientVAs")
+
+  // Time entries this user (as a VA) owns.
+  timeEntries TimeEntry[] @relation("VAEntries")
+
+  // Comments this user (as an admin / VA admin) has written on entries.
+  authoredComments Comment[] @relation("CommentAuthor")
+
+  @@index([clientId])
+  @@index([role])
+}
+
+model TimeEntry {
+  id   String @id @default(cuid())
+  vaId String
+  va   User   @relation("VAEntries", fields: [vaId], references: [id], onDelete: Cascade)
+
+  // The ET calendar day this entry belongs to (stored at ET-midnight, UTC-normalized).
+  // Used for grouping/sorting so entries near midnight land on the intended day.
+  workDate DateTime
+
+  timeIn      DateTime? // UTC; null until set
+  timeOut     DateTime? // UTC; null until closed
+  hoursWorked Float?    // computed on close; null while open/incomplete
+
+  startOfDayTasks String
+  urgentNeed      String? // null / empty => no urgent flag
+  endOfDayTasks   String? // null until closed
+
+  // "WORK" (a clocked shift) | "PTO" (paid time off / vacation, credited 8h)
+  entryType String   @default("WORK")
+  status    String   @default("OPEN") // OPEN | CLOSED | INCOMPLETE
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Admin feedback on this entry's start-of-day / end-of-day report.
+  comments Comment[]
+
+  @@index([vaId, workDate])
+  @@index([status])
+  // Fast lookup / integrity for the "at most one OPEN entry per VA" guard.
+  // Enforced at the application layer inside a transaction; see src/lib/timeEntries.ts.
+  @@index([vaId, status])
+}
+
+// A note an admin (or VA admin) leaves on a VA's time entry. The VA sees it as
+// feedback on their dashboard; `readAt` stays null until they've viewed it,
+// which drives the "new comment" notification.
+model Comment {
+  id      String    @id @default(cuid())
+  entryId String
+  entry   TimeEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  authorId String
+  author   User   @relation("CommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  // Which part of the entry this is about: "START" | "END" | "GENERAL".
+  target String @default("GENERAL")
+  body   String
+
+  readAt    DateTime? // null until the VA has seen it
+  createdAt DateTime  @default(now())
+
+  @@index([entryId])
+  @@index([authorId])
+}
