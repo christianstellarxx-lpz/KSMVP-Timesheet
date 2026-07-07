@@ -14,8 +14,12 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  // Use a DIRECT (non-pooled) connection string so migrations run cleanly.
-  url      = env("DATABASE_URL")
+  // Runtime queries use DATABASE_URL (pooled is fine). Migrations use a DIRECT
+  // (non-pooled) connection via DATABASE_URL_UNPOOLED. With Vercel/Neon's
+  // integrated Postgres both are set automatically; for an external database
+  // set both to the same connection string.
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
 // Role values: "ADMIN" | "VA_ADMIN" | "VA" | "INTERN"   (see src/lib/session.ts)

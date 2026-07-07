@@ -79,9 +79,9 @@ npm install
 
 # 2. Configure environment
 cp .env.example .env
-#    - DATABASE_URL: paste your Postgres connection string (use the DIRECT /
-#      non-pooled URL). The same URL works locally and in production.
-#    - AUTH_SECRET:  a long random string  ->  openssl rand -base64 32
+#    - DATABASE_URL / DATABASE_URL_UNPOOLED: your Postgres connection string(s).
+#      If you only have one, set both to the same value.
+#    - AUTH_SECRET: a long random string  ->  openssl rand -base64 32
 
 # 3. Create the schema and seed the org roster
 npm run db:deploy       # prisma migrate deploy  (applies migrations)
@@ -101,21 +101,19 @@ That's it — sign in with a seeded account below (PIN `0000`).
 ## Deploying to Vercel
 
 1. **Create a Postgres database.** In the Vercel dashboard → **Storage → Create
-   Database → Postgres** (or use Neon/Supabase). Copy its **direct / non-pooled**
-   connection string.
-2. **Set environment variables** for the project (Settings → Environment
-   Variables), for Production (and Preview):
-   - `DATABASE_URL` = your Postgres connection string.
-   - `AUTH_SECRET`  = a long random string (`openssl rand -base64 32`).
-3. **Redeploy.** The build runs `prisma generate && prisma migrate deploy &&
-   next build`, so the tables are created automatically on deploy.
-4. **Seed the roster once** (creates the login accounts). From your machine with
-   the production `DATABASE_URL` in `.env`:
-   ```bash
-   npm run db:seed
-   ```
-   The seed is **idempotent** (upsert by email) — safe to re-run; it never
-   deletes logged hours.
+   Database → Neon** (Serverless Postgres). Connect it to the project — this
+   auto-creates `DATABASE_URL` and `DATABASE_URL_UNPOOLED` for you.
+   _(External Neon/Supabase also works: add both env vars yourself; if you only
+   have one connection string, set both to it.)_
+2. **Add `AUTH_SECRET`** (Settings → Environment Variables, Production + Preview)
+   = a long random string (`openssl rand -base64 32`).
+3. **Redeploy.** The build runs
+   `prisma generate && prisma migrate deploy && prisma db seed && next build`, so
+   the tables **and the login accounts** are created automatically on deploy.
+
+That's it — open the app and sign in with PIN `0000`. The seed is **idempotent**
+(upsert by email), so it's safe to run on every deploy — it never deletes logged
+hours or resets changed PINs.
 
 Everyone signs in with the default PIN **`0000`** and can change it under
 **Account** settings.

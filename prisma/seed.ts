@@ -2,7 +2,12 @@ import { PrismaClient } from "@prisma/client";
 import { hashPassword } from "../src/lib/password";
 import { DEFAULT_PIN } from "../src/lib/validation";
 
-const prisma = new PrismaClient();
+// Prefer the direct (non-pooled) connection for seeding when available; fall
+// back to DATABASE_URL. Avoids pooler quirks during the Vercel build.
+const seedUrl = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL;
+const prisma = new PrismaClient(
+  seedUrl ? { datasourceUrl: seedUrl } : undefined,
+);
 
 interface Member {
   role: "ADMIN" | "VA_ADMIN" | "VA" | "INTERN";
