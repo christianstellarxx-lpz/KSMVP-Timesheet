@@ -18,7 +18,7 @@ export function RollCall({ data }: { data: RollCallData }) {
             {data.dateLabel} · today’s clock-in / clock-out status
           </p>
         </div>
-        <ReadyBadge ready={data.ready} pending={data.counts.in + data.counts.incomplete} />
+        <ReadyBadge ready={data.endReady} pending={data.counts.in + data.counts.incomplete} />
       </header>
 
       <div className="space-y-5 p-4 sm:p-6">
@@ -51,15 +51,23 @@ export function RollCall({ data }: { data: RollCallData }) {
           ))}
         </ul>
 
-        {/* Email / copy actions */}
-        <div className="flex flex-col gap-3 border-t border-[var(--border)] pt-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs text-[var(--text-muted)]">
-            {data.ready
-              ? "Everyone’s clocked out — ready to notify the admins."
-              : "Send once everyone has clocked in and out."}{" "}
+        {/* Email actions — open Gmail (new tab) with the right report */}
+        <div className="flex flex-col gap-3 border-t border-[var(--border)] pt-4 sm:flex-row sm:items-start sm:justify-between">
+          <p className="max-w-xs text-xs text-[var(--text-muted)]">
+            Opens Gmail in a new tab, pre-filled.{" "}
+            {data.endReady
+              ? "Everyone’s clocked out — send the End-of-Day report."
+              : data.startReady
+                ? "Everyone’s clocked in — send the Start-of-Day report."
+                : "Send the Start-of-Day report once everyone’s clocked in."}{" "}
             Recipients: {data.adminEmails.join(", ")}
           </p>
-          <RollCallActions summaryText={data.summaryText} mailto={data.mailto} />
+          <RollCallActions
+            start={data.start}
+            end={data.end}
+            startReady={data.startReady}
+            endReady={data.endReady}
+          />
         </div>
       </div>
     </section>

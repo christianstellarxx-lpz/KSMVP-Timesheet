@@ -8,6 +8,9 @@ import {
   formatEtTime,
 } from "./time";
 
+/** Public URL of the app, included in the daily email so admins can open it. */
+const APP_LOGIN_URL = "https://ksmvp-task.vercel.app/login";
+
 export type RollState = "OUT" | "IN" | "PTO" | "INCOMPLETE" | "NONE";
 
 export interface RollRow {
@@ -18,6 +21,13 @@ export interface RollRow {
   timeInLabel: string | null;
   timeOutLabel: string | null;
   hoursWorked: number | null;
+}
+
+export interface RollEmail {
+  subject: string;
+  body: string;
+  /** Opens Gmail's compose window (new tab) pre-filled with this report. */
+  gmailUrl: string;
 }
 
 export interface RollCallData {
@@ -32,12 +42,14 @@ export interface RollCallData {
     incomplete: number;
     none: number;
   };
-  /** True once everyone who started has clocked out (nobody still in / incomplete). */
-  ready: boolean;
+  /** Everyone who's working has clocked in — the Start-of-Day report is ready. */
+  startReady: boolean;
+  /** Everyone who started has clocked out — the End-of-Day report is ready. */
+  endReady: boolean;
   adminEmails: string[];
-  subject: string;
-  summaryText: string;
-  mailto: string;
+  /** Pre-composed Start-of-Day and End-of-Day emails (Gmail compose links). */
+  start: RollEmail;
+  end: RollEmail;
 }
 
 /**
@@ -98,34 +110,101 @@ export async function getTodayRollCall(
     incomplete: rows.filter((r) => r.state === "INCOMPLETE").length,
     none: rows.filter((r) => r.state === "NONE").length,
   };
-  const ready = counts.in === 0 && counts.incomplete === 0 && counts.out > 0;
+  // Start-of-Day: everyone who's working has a time-in (nobody "not started").
+  const startReady =
+    counts.none === 0 && counts.in + counts.out + counts.incomplete > 0;
+  // End-of-Day: everyone who started has clocked out.
+  const endReady = counts.in === 0 && counts.incomplete === 0 && counts.out > 0;
 
   const adminEmails = admins.map((a) => a.email);
-  const subject = `VA Daily Time Report — ${dateLabel}`;
-  const summaryText = buildSummary(dateLabel, rows, reporterName);
-  const mailto = `mailto:${encodeURIComponent(adminEmails.join(","))}?subject=${encodeURIComponent(
-    subject,
-  )}&body=${encodeURIComponent(summaryText)}`;
+  const start = buildEmail(
+    `VA Start-of-Day Report — ${dateLabel}`,
+    buildStartSummary(dateLabel, rows, reporterName),
+    adminEmails,
+  );
+  const end = buildEmail(
+    `VA End-of-Day Report — ${dateLabel}`,
+    buildEndSummary(dateLabel, rows, reporterName),
+    adminEmails,
+  );
 
   return {
     date: today,
     dateLabel,
     rows,
     counts,
-    ready,
+    startReady,
+    endReady,
     adminEmails,
-    subject,
-    summaryText,
-    mailto,
+    start,
+    end,
   };
 }
 
-function buildSummary(
+/** Build an email payload + a Gmail compose URL that opens pre-filled. */
+function buildEmail(subject: string, body: string, to: string[]): RollEmail {
+  const params = new URLSearchParams({
+    view: "cm", // compose mode
+    fs: "1", // full screen
+    to: to.join(","),
+    su: subject,
+    body,
+  });
+  return {
+    subject,
+    body,
+    gmailUrl: `https://mail.google.com/mail/?${params.toString()}`,
+  };
+}
+
+/** Morning report — sent once everyone has clocked in. */
+function buildStartSummary(
   dateLabel: string,
   rows: RollRow[],
   reporterName: string,
 ): string {
-  const lines: string[] = [`VA Daily Time Report — ${dateLabel}`, ""];
+  const lines: string[] = [`VA Start-of-Day Report — ${dateLabel}`, ""];
+  const group = (state: RollState) => rows.filter((r) => r.state === state);
+
+  // Anyone with a time-in (still in, already out, or missing a clock-out).
+  const clockedIn = rows.filter(
+    (r) => r.state === "IN" || r.state === "OUT" || r.state === "INCOMPLETE",
+  );
+  if (clockedIn.length) {
+    lines.push(`Clocked in (${clockedIn.length}):`);
+    clockedIn.forEach((r) =>
+      lines.push(`  - ${r.name}: in at ${r.timeInLabel} ET`),
+    );
+    lines.push("");
+  }
+
+  const pto = group("PTO");
+  if (pto.length) {
+    lines.push(`PTO / Vacation (${pto.length}):`);
+    pto.forEach((r) => lines.push(`  - ${r.name}`));
+    lines.push("");
+  }
+
+  const none = group("NONE");
+  if (none.length) {
+    lines.push(`Not started (${none.length}):`);
+    none.forEach((r) => lines.push(`  - ${r.name}`));
+    lines.push("");
+  }
+
+  lines.push(`Open KSMVP VA Tasks: ${APP_LOGIN_URL}`);
+  lines.push("");
+  lines.push(`Prepared by ${reporterName} · KSMVP VA Tasks`);
+  return lines.join("\n");
+}
+
+/** End-of-day report — sent once everyone has clocked out. */
+function buildEndSummary(
+  dateLabel: string,
+  rows: RollRow[],
+  reporterName: string,
+): string {
+  const lines: string[] = [`VA End-of-Day Report — ${dateLabel}`, ""];
   const group = (state: RollState) => rows.filter((r) => r.state === state);
 
   const out = group("OUT");
@@ -167,6 +246,8 @@ function buildSummary(
     lines.push("");
   }
 
+  lines.push(`Open KSMVP VA Tasks: ${APP_LOGIN_URL}`);
+  lines.push("");
   lines.push(`Prepared by ${reporterName} · KSMVP VA Tasks`);
   return lines.join("\n");
 }
