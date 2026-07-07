@@ -36,19 +36,26 @@ const MEMBERS: Member[] = [
 async function main() {
   console.log("Seeding KSMVP VA Tasks…");
 
-  // Fresh start. Cascade removes any existing time entries.
-  await prisma.timeEntry.deleteMany();
-  await prisma.user.deleteMany();
-
   const passwordHash = await hashPassword(DEFAULT_PIN);
 
+  // Idempotent: upsert by email so this is safe to run against production and
+  // safe to re-run. Existing accounts keep their PIN and their time entries;
+  // only new people are added and role/title are kept in sync. It never wipes
+  // data (no deleteMany), so re-seeding won't destroy logged hours.
   for (const m of MEMBERS) {
-    await prisma.user.create({
-      data: {
+    const email = m.email.toLowerCase();
+    await prisma.user.upsert({
+      where: { email },
+      update: {
         role: m.role,
         name: m.name,
         title: m.title,
-        email: m.email.toLowerCase(),
+      },
+      create: {
+        role: m.role,
+        name: m.name,
+        title: m.title,
+        email,
         passwordHash,
       },
     });

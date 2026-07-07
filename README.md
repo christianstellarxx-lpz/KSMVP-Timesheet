@@ -53,7 +53,7 @@ review all of their VAs' activity at a glance.
 | Framework | Next.js 15 (App Router, TypeScript, Server Actions) |
 | Styling | Tailwind CSS v3 with brand design tokens |
 | Fonts | Poppins (headings/buttons/numbers) + Open Sans (body) via `next/font` |
-| Database | Prisma ORM — **SQLite** for zero-setup local dev, **PostgreSQL** for production (portable schema) |
+| Database | Prisma ORM — **PostgreSQL** (Neon / Vercel Postgres / Supabase) for local dev and production |
 | Auth | Custom email+password sessions — `bcryptjs` hashes, signed JWT in an HTTP-only cookie (`jose`), role-based route guards |
 | Time/date | Luxon (all timezone math) |
 | Validation | Zod (shared by client forms and server actions) |
@@ -64,12 +64,14 @@ review all of their VAs' activity at a glance.
 ## Prerequisites
 
 - **Node.js 18.18+** (built and verified on Node 24)
-- Nothing else for local dev — the default database is **SQLite** (a file), so no
-  Docker, no install, no signup. PostgreSQL is only needed for production.
+- A **PostgreSQL** database. The easiest zero-install option is a free serverless
+  Postgres — **[Neon](https://neon.tech)**, **Vercel Postgres**, or
+  **[Supabase](https://supabase.com)**. No Docker required. The same database URL
+  is used for local dev and production.
 
 ---
 
-## Setup (one documented path — zero external services)
+## Setup
 
 ```bash
 # 1. Install dependencies
@@ -77,34 +79,46 @@ npm install
 
 # 2. Configure environment
 cp .env.example .env
-#    - Set AUTH_SECRET to a long random string:  openssl rand -base64 32
-#    - DATABASE_URL already defaults to SQLite (file:./dev.db) — nothing to change.
+#    - DATABASE_URL: paste your Postgres connection string (use the DIRECT /
+#      non-pooled URL). The same URL works locally and in production.
+#    - AUTH_SECRET:  a long random string  ->  openssl rand -base64 32
 
-# 3. Create the schema and seed demo data (creates prisma/dev.db)
-npm run db:migrate      # prisma migrate dev
-npm run db:seed         # 1 client + 3 VAs + sample entries
+# 3. Create the schema and seed the org roster
+npm run db:deploy       # prisma migrate deploy  (applies migrations)
+npm run db:seed         # upserts the 11-person roster (idempotent, no data loss)
 
 # 4. Run it
 npm run dev             # http://localhost:3000
 ```
 
-That's it — sign in with a demo account below.
+That's it — sign in with a seeded account below (PIN `0000`).
 
 > **Already have the dev server running?** Restart it after step 2/3 so it picks
 > up `.env` and the freshly generated Prisma client.
 
-### Switching to PostgreSQL (production)
+---
 
-The schema is written to be portable. To run on Postgres instead:
+## Deploying to Vercel
 
-1. In `prisma/schema.prisma`, change `provider = "sqlite"` → `provider = "postgresql"`.
-2. Set `DATABASE_URL` to your Postgres instance (the bundled `docker-compose.yml`
-   provides one: `docker compose up -d` → `postgresql://ksmvp:ksmvp@localhost:5432/ksmvp?schema=public`).
-3. Delete the SQLite-flavored `prisma/migrations/` folder, then
-   `npm run db:migrate && npm run db:seed` to create fresh Postgres migrations.
+1. **Create a Postgres database.** In the Vercel dashboard → **Storage → Create
+   Database → Postgres** (or use Neon/Supabase). Copy its **direct / non-pooled**
+   connection string.
+2. **Set environment variables** for the project (Settings → Environment
+   Variables), for Production (and Preview):
+   - `DATABASE_URL` = your Postgres connection string.
+   - `AUTH_SECRET`  = a long random string (`openssl rand -base64 32`).
+3. **Redeploy.** The build runs `prisma generate && prisma migrate deploy &&
+   next build`, so the tables are created automatically on deploy.
+4. **Seed the roster once** (creates the login accounts). From your machine with
+   the production `DATABASE_URL` in `.env`:
+   ```bash
+   npm run db:seed
+   ```
+   The seed is **idempotent** (upsert by email) — safe to re-run; it never
+   deletes logged hours.
 
-No application code changes are required — roles/status are stored as validated
-strings, so the same code runs on both engines.
+Everyone signs in with the default PIN **`0000`** and can change it under
+**Account** settings.
 
 ### Seeded accounts
 

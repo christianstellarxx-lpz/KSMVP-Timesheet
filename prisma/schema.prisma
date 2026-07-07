@@ -1,20 +1,20 @@
 // KSMVP VA Tasks — data model
 // All timestamps are stored in UTC and displayed in America/New_York (ET).
 //
-// DATABASE: this schema is portable across SQLite (zero-setup local dev) and
-// PostgreSQL (production). To use Postgres, change `provider` to "postgresql"
-// and point DATABASE_URL at your instance — no other edits required.
+// DATABASE: PostgreSQL, for both local dev and production (e.g. Vercel).
+// Use a hosted Postgres (Neon, Vercel Postgres, Supabase, …) and point
+// DATABASE_URL at it — the same URL works locally and in production.
 //
-// Because it targets SQLite too, roles/status are stored as strings (validated
-// in app code) rather than DB enums, hours are Float, and workDate is a plain
-// DateTime anchored to ET-midnight UTC. See src/lib/time.ts.
+// Roles/status are stored as validated strings (not DB enums), hours are Float,
+// and workDate is a plain DateTime anchored to ET-midnight UTC. See src/lib/time.ts.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite" // dev default; switch to "postgresql" for production
+  provider = "postgresql"
+  // Use a DIRECT (non-pooled) connection string so migrations run cleanly.
   url      = env("DATABASE_URL")
 }
 

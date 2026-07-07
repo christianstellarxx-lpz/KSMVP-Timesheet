@@ -4,8 +4,9 @@ import { useEffect } from "react";
 import { Logo } from "@/components/Logo";
 
 /**
- * Route-level error boundary. The most common cause in local dev is an
- * unreachable database — surface that hint instead of an opaque 500.
+ * Route-level error boundary. Usually caused by an unreachable database or a
+ * missing env var (DATABASE_URL / AUTH_SECRET) — keep the user-facing copy
+ * generic and actionable.
  */
 export default function Error({
   error,
@@ -37,14 +38,12 @@ export default function Error({
           Something went wrong
         </h1>
         <p className="mt-2 text-sm text-[var(--text-muted)]">
-          This page couldn’t load. The most common cause during local setup is
-          that the <span className="font-semibold">database isn’t running</span>{" "}
-          or <code className="rounded bg-[var(--surface-muted)] px-1">DATABASE_URL</code>{" "}
-          is wrong. Start Postgres and run{" "}
-          <code className="rounded bg-[var(--surface-muted)] px-1">
-            npm run db:migrate &amp;&amp; npm run db:seed
-          </code>
-          , then retry.
+          This page couldn’t load. Please try again in a moment. If it keeps
+          happening, the app can’t reach its database — check that{" "}
+          <code className="rounded bg-[var(--surface-muted)] px-1">DATABASE_URL</code>{" "}
+          and{" "}
+          <code className="rounded bg-[var(--surface-muted)] px-1">AUTH_SECRET</code>{" "}
+          are set correctly.
         </p>
         {error.digest && (
           <p className="mt-3 text-xs text-[var(--text-muted)]">
