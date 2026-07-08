@@ -2,9 +2,20 @@ import type { DashboardEntry } from "@/lib/dashboard";
 import { UrgentBanner } from "@/components/UrgentBanner";
 import { StatusBadge, PunctualityChips } from "@/components/Badges";
 import { EntryComments } from "./EntryComments";
+import { DeleteButton } from "./DeleteButton";
+import { deleteEntryAction } from "@/app/client/actions";
 
-export function DashboardEntryCard({ entry }: { entry: DashboardEntry }) {
-  if (entry.entryType === "PTO") return <PtoRow entry={entry} />;
+export function DashboardEntryCard({
+  entry,
+  canDelete,
+  viewerId,
+}: {
+  entry: DashboardEntry;
+  canDelete: boolean;
+  viewerId: string;
+}) {
+  if (entry.entryType === "PTO")
+    return <PtoRow entry={entry} canDelete={canDelete} />;
 
   const urgent = entry.hasUrgent;
   return (
@@ -45,6 +56,14 @@ export function DashboardEntryCard({ entry }: { entry: DashboardEntry }) {
           )}
           <PunctualityChips chips={entry.chips} />
           <StatusBadge status={entry.status} />
+          {canDelete && (
+            <DeleteButton
+              action={deleteEntryAction}
+              fields={{ entryId: entry.id }}
+              label="Delete this entry"
+              confirmText={`Delete ${entry.vaName}'s entry for ${entry.workDateLabel}? This can't be undone.`}
+            />
+          )}
         </div>
       </header>
 
@@ -94,13 +113,21 @@ export function DashboardEntryCard({ entry }: { entry: DashboardEntry }) {
           entryId={entry.id}
           comments={entry.comments}
           vaName={entry.vaName}
+          canDelete={canDelete}
+          viewerId={viewerId}
         />
       </div>
     </article>
   );
 }
 
-function PtoRow({ entry }: { entry: DashboardEntry }) {
+function PtoRow({
+  entry,
+  canDelete,
+}: {
+  entry: DashboardEntry;
+  canDelete: boolean;
+}) {
   const note = entry.startOfDayTasks?.trim();
   const hasNote = !!note && note !== "Paid time off / Vacation";
   return (
@@ -129,6 +156,14 @@ function PtoRow({ entry }: { entry: DashboardEntry }) {
           <span className="chip bg-brand-blue-50 text-brand-blue-700">
             8 hours
           </span>
+          {canDelete && (
+            <DeleteButton
+              action={deleteEntryAction}
+              fields={{ entryId: entry.id }}
+              label="Delete this entry"
+              confirmText={`Delete ${entry.vaName}'s PTO for ${entry.workDateLabel}? This can't be undone.`}
+            />
+          )}
         </div>
       </header>
       <div className="px-4 py-4 sm:px-5">

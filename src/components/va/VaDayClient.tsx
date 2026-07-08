@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import type { VaDayState, EntryDTO } from "@/lib/timeEntries";
+import type { GameState } from "@/lib/game";
+import type { NoticeDTO } from "@/lib/notices";
+import { NoticeInbox } from "@/components/NoticeInbox";
 import { UrgentBanner } from "@/components/UrgentBanner";
 import { StatusBadge } from "@/components/Badges";
 import { LiveClock } from "./LiveClock";
@@ -10,14 +13,23 @@ import { TimeOutModal } from "./TimeOutModal";
 import { ResolveStaleModal } from "./ResolveStaleModal";
 import { PtoModal } from "./PtoModal";
 import { AdminFeedback } from "./AdminFeedback";
+import { FlappyGame } from "./FlappyGame";
 import { presetWallClock, SCHEDULE, SCHEDULE_SHIFT_LABEL } from "@/lib/time";
 
 export function VaDayClient({
   firstName,
   state,
+  game,
+  meId,
+  notices,
+  dismissNoticeAction,
 }: {
   firstName: string;
   state: VaDayState;
+  game: GameState;
+  meId: string;
+  notices: NoticeDTO[];
+  dismissNoticeAction: (formData: FormData) => void | Promise<void>;
 }) {
   const active =
     state.todayEntry?.status === "OPEN" ? state.todayEntry : null;
@@ -47,6 +59,9 @@ export function VaDayClient({
         </div>
         <LiveClock />
       </div>
+
+      {/* Sales Desk notices addressed to this VA */}
+      <NoticeInbox notices={notices} dismissAction={dismissNoticeAction} />
 
       {/* Stale / forgotten sessions */}
       {state.stale.length > 0 && (
@@ -149,6 +164,15 @@ export function VaDayClient({
           Log PTO / Vacation day
         </button>
       </div>
+
+      {/* Daily Flappy Bird game — unlocks once clocked in, one play a day.
+          The key remounts it when clock-in / played status changes (e.g. right
+          after Time In) so it re-reads the fresh availability from the server. */}
+      <FlappyGame
+        key={`${game.clockedInToday}-${game.hasPlayedToday}`}
+        game={game}
+        meId={meId}
+      />
 
       {/* Modals — mounted only while open so their form/action state resets. */}
       {modal === "in" && (

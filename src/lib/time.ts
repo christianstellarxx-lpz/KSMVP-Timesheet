@@ -44,6 +44,11 @@ export function etToday(now: Date = new Date()): EtDateString {
   return DateTime.fromJSDate(now).setZone(ET_ZONE).toISODate()!;
 }
 
+/** The ET calendar day `days` before today (0 = today, 1 = yesterday). */
+export function etDaysAgo(days: number, now: Date = new Date()): EtDateString {
+  return DateTime.fromJSDate(now).setZone(ET_ZONE).minus({ days }).toISODate()!;
+}
+
 /** The ET calendar day that a UTC instant falls on. */
 export function etDateStringForInstant(instant: Date): EtDateString {
   return DateTime.fromJSDate(instant).setZone(ET_ZONE).toISODate()!;

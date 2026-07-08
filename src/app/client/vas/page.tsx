@@ -139,6 +139,7 @@ function RoleBadge({ role }: { role: Role }) {
   const cls: Record<Role, string> = {
     ADMIN: "bg-brand-blue-100 text-brand-blue-800",
     VA_ADMIN: "bg-emerald-50 text-emerald-700",
+    SALES_PRODUCER: "bg-brand-yellow-100 text-brand-yellow-800",
     VA: "bg-emerald-50 text-emerald-700",
     INTERN: "bg-[var(--surface-muted)] text-[var(--text-muted)]",
   };

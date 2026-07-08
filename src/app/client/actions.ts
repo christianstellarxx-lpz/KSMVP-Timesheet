@@ -1,9 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireAdmin } from "@/lib/session";
+import { requireAdmin, isFullAdmin } from "@/lib/session";
 import { addTeamMember } from "@/lib/vas";
-import { addComment } from "@/lib/comments";
+import { addComment, deleteOwnComment } from "@/lib/comments";
+import { deleteTimeEntry } from "@/lib/dashboard";
 import { addMemberSchema, commentSchema } from "@/lib/validation";
 import { fieldErrorsFromZod, type FormState } from "@/lib/formState";
 
@@ -48,4 +49,30 @@ export async function addCommentAction(
   revalidatePath("/client");
   revalidatePath("/va");
   return { ok: true };
+}
+
+/** Delete a VA's time entry — top-level admins only. */
+export async function deleteEntryAction(formData: FormData): Promise<void> {
+  const session = await requireAdmin();
+  if (!isFullAdmin(session.role)) return;
+
+  const entryId = String(formData.get("entryId") ?? "");
+  if (!entryId) return;
+
+  await deleteTimeEntry(entryId);
+  revalidatePath("/client");
+  revalidatePath("/va");
+}
+
+/** Delete one of the admin's own comments — top-level admins only. */
+export async function deleteCommentAction(formData: FormData): Promise<void> {
+  const session = await requireAdmin();
+  if (!isFullAdmin(session.role)) return;
+
+  const commentId = String(formData.get("commentId") ?? "");
+  if (!commentId) return;
+
+  await deleteOwnComment(commentId, session.userId);
+  revalidatePath("/client");
+  revalidatePath("/va");
 }

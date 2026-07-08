@@ -12,6 +12,7 @@ export interface CommentDTO {
   /** Human label for the part of the entry this is about. */
   targetLabel: string;
   body: string;
+  authorId: string;
   authorName: string;
   createdAtLabel: string;
   /** The VA has not yet seen it (readAt is null) — drives "New" badges + the notification. */
@@ -40,6 +41,7 @@ interface CommentRow {
   id: string;
   target: string;
   body: string;
+  authorId: string;
   readAt: Date | null;
   createdAt: Date;
   author: { name: string };
@@ -51,6 +53,7 @@ export function toCommentDTO(row: CommentRow): CommentDTO {
     target: (row.target as CommentTarget) ?? "GENERAL",
     targetLabel: targetLabel(row.target),
     body: row.body,
+    authorId: row.authorId,
     authorName: row.author.name,
     createdAtLabel: formatEtDateTime(row.createdAt),
     unread: row.readAt == null,
@@ -82,6 +85,20 @@ export async function addComment(
     },
   });
   return { ok: true };
+}
+
+/**
+ * Delete a comment — only if `authorId` actually wrote it (an admin can remove
+ * their own comments). Returns whether a row was deleted.
+ */
+export async function deleteOwnComment(
+  commentId: string,
+  authorId: string,
+): Promise<boolean> {
+  const res = await prisma.comment.deleteMany({
+    where: { id: commentId, authorId },
+  });
+  return res.count > 0;
 }
 
 /**

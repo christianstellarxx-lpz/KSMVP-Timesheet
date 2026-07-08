@@ -10,6 +10,8 @@ import {
   formatEtDateLong,
   storageDateToEtDateString,
   etDateStringToStorageDate,
+  etToday,
+  etDaysAgo,
   hasUrgent,
   type PunctualityChip,
 } from "./time";
@@ -21,10 +23,13 @@ export type SortKey =
   | "hours_desc"
   | "urgent_first";
 
+/** Which day's entries the dashboard shows. Defaults to "today". */
+export type DayFilter = "today" | "yesterday" | "other";
+
 export interface DashboardFilters {
   vaId?: string; // specific VA, or undefined = all
-  from?: string; // ET date string (inclusive)
-  to?: string; // ET date string (inclusive)
+  day: DayFilter; // which day to show; drives the resolved `date`
+  date: string; // the resolved ET date being viewed (YYYY-MM-DD)
   urgentOnly?: boolean;
   sort: SortKey;
 }
@@ -80,13 +85,34 @@ export function parseFilters(
       ? sortRaw
       : "date_desc";
 
+  // Which day to show. "today" is the default; "other" reveals a date picker
+  // (falls back to two days ago if no valid date was chosen yet).
+  const dayRaw = get("day");
+  const day: DayFilter =
+    dayRaw === "yesterday" || dayRaw === "other" ? dayRaw : "today";
+
+  let date: string;
+  if (day === "yesterday") {
+    date = etDaysAgo(1);
+  } else if (day === "other") {
+    const picked = get("date");
+    date = isDate(picked) ? picked : etDaysAgo(2);
+  } else {
+    date = etToday();
+  }
+
   return {
     vaId: get("vaId") || undefined,
-    from: isDate(get("from")) ? get("from") : undefined,
-    to: isDate(get("to")) ? get("to") : undefined,
+    day,
+    date,
     urgentOnly: get("urgent") === "1",
     sort,
   };
+}
+
+/** Permanently delete a VA's time entry (and its comments, via cascade). */
+export async function deleteTimeEntry(entryId: string): Promise<void> {
+  await prisma.timeEntry.deleteMany({ where: { id: entryId } });
 }
 
 export async function getDashboardData(
@@ -109,12 +135,8 @@ export async function getDashboardData(
   if (filters.vaId && vaIds.has(filters.vaId)) {
     where.vaId = filters.vaId;
   }
-  if (filters.from || filters.to) {
-    where.workDate = {};
-    if (filters.from)
-      where.workDate.gte = etDateStringToStorageDate(filters.from);
-    if (filters.to) where.workDate.lte = etDateStringToStorageDate(filters.to);
-  }
+  // Single-day view: entries whose ET work date matches the resolved date.
+  where.workDate = etDateStringToStorageDate(filters.date);
   if (filters.urgentOnly) {
     where.AND = [{ urgentNeed: { not: null } }, { urgentNeed: { not: "" } }];
   }

@@ -13,10 +13,17 @@ const MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 days
  *  VA_ADMIN — sees the admin dashboard AND their own VA dashboard (tabbed).
  *  VA       — sees their own VA dashboard.
  *  INTERN   — sees their own VA dashboard (same access as VA).
+ *  SALES_PRODUCER — sees a unique Sales Desk (Technical Support / Admin Inquiries).
  */
-export type Role = "ADMIN" | "VA_ADMIN" | "VA" | "INTERN";
+export type Role = "ADMIN" | "VA_ADMIN" | "VA" | "INTERN" | "SALES_PRODUCER";
 
-export const ROLES: Role[] = ["ADMIN", "VA_ADMIN", "VA", "INTERN"];
+export const ROLES: Role[] = [
+  "ADMIN",
+  "VA_ADMIN",
+  "VA",
+  "INTERN",
+  "SALES_PRODUCER",
+];
 
 /** Roles that can view the org-wide admin dashboard. */
 export const ADMIN_ROLES: Role[] = ["ADMIN", "VA_ADMIN"];
@@ -28,6 +35,18 @@ export function canViewAdmin(role: Role): boolean {
 }
 export function canViewVa(role: Role): boolean {
   return VA_ROLES.includes(role);
+}
+/** The Sales Producer's unique dashboard. */
+export function canViewSales(role: Role): boolean {
+  return role === "SALES_PRODUCER";
+}
+
+/**
+ * Top-level admins only (not VA admins). Gate destructive actions here —
+ * deleting VAs' time entries and comments.
+ */
+export function isFullAdmin(role: Role): boolean {
+  return role === "ADMIN";
 }
 
 /**
@@ -49,6 +68,8 @@ export function roleLabel(role: Role): string {
       return "Virtual Assistant";
     case "INTERN":
       return "Intern";
+    case "SALES_PRODUCER":
+      return "Sales Producer";
     case "VA":
     default:
       return "Virtual Assistant";
@@ -126,7 +147,9 @@ export async function getSession(): Promise<SessionUser | null> {
 
 /** The landing route for a given role. */
 export function homePathForRole(role: Role): string {
-  return canViewAdmin(role) ? "/client" : "/va";
+  if (canViewAdmin(role)) return "/client";
+  if (canViewSales(role)) return "/sales";
+  return "/va";
 }
 
 /** Guard: require any authenticated user, else redirect to login. */
@@ -147,5 +170,12 @@ export async function requireAdmin(): Promise<SessionUser> {
 export async function requireVA(): Promise<SessionUser> {
   const session = await requireUser();
   if (!canViewVa(session.role)) redirect(homePathForRole(session.role));
+  return session;
+}
+
+/** Guard: require the Sales Producer dashboard. */
+export async function requireSalesProducer(): Promise<SessionUser> {
+  const session = await requireUser();
+  if (!canViewSales(session.role)) redirect(homePathForRole(session.role));
   return session;
 }

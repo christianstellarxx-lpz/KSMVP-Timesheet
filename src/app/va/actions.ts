@@ -9,6 +9,7 @@ import {
   logPtoForVa,
 } from "@/lib/timeEntries";
 import { markCommentsReadForVa } from "@/lib/comments";
+import { submitGameScore, type SubmitScoreResult } from "@/lib/game";
 import {
   timeInSchema,
   timeOutSchema,
@@ -100,4 +101,12 @@ export async function logPtoAction(
 export async function acknowledgeCommentsAction(): Promise<void> {
   const session = await requireVA();
   await markCommentsReadForVa(session.userId);
+}
+
+/** Record the VA's daily Flappy Bird score (one play per day, after clock-in). */
+export async function submitGameScoreAction(
+  score: number,
+): Promise<SubmitScoreResult> {
+  const session = await requireVA();
+  return submitGameScore(session.userId, score);
 }

@@ -1,10 +1,14 @@
 import Link from "next/link";
-import { requireAdmin, isDailyReporter } from "@/lib/session";
+import { requireAdmin, isDailyReporter, isFullAdmin } from "@/lib/session";
 import { getDashboardData, parseFilters } from "@/lib/dashboard";
+import { formatEtDateLong } from "@/lib/time";
 import { getTodayRollCall } from "@/lib/rollcall";
+import { getUnreadNoticesForUser } from "@/lib/notices";
+import { dismissNoticeAction } from "@/app/notices/actions";
 import { DashboardFilters } from "@/components/client/DashboardFilters";
 import { DashboardEntryCard } from "@/components/client/DashboardEntryCard";
 import { RollCall } from "@/components/client/RollCall";
+import { NoticeInbox } from "@/components/NoticeInbox";
 
 export const metadata = { title: "Dashboard — KSMVP VA Tasks" };
 export const dynamic = "force-dynamic";
@@ -17,17 +21,27 @@ export default async function ClientDashboardPage({
   const session = await requireAdmin();
   const filters = parseFilters(await searchParams);
   const data = await getDashboardData(filters);
+  const canDelete = isFullAdmin(session.role);
 
   // The daily reporter gets a unique roll-call panel at the top.
   const reporter = isDailyReporter(session.email);
   const rollCall = reporter ? await getTodayRollCall(session.name) : null;
 
+  // Sales Desk notices addressed to this admin (e.g. Admin Inquiries).
+  const notices = await getUnreadNoticesForUser(session.userId);
+
   const hasVAs = data.vas.length > 0;
-  const filtersActive =
-    !!filters.vaId || !!filters.from || !!filters.to || filters.urgentOnly;
+  const filtersActive = !!filters.vaId || filters.urgentOnly;
+  const dayLabel =
+    filters.day === "today"
+      ? "Today"
+      : filters.day === "yesterday"
+        ? "Yesterday"
+        : "Selected day";
 
   return (
     <div className="space-y-6">
+      <NoticeInbox notices={notices} dismissAction={dismissNoticeAction} />
       {rollCall && <RollCall data={rollCall} />}
       <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
         <div>
@@ -35,8 +49,8 @@ export default async function ClientDashboardPage({
             Team activity
           </h1>
           <p className="text-sm text-[var(--text-muted)]">
-            Daily time and task reports from your virtual assistants — all times
-            in ET.
+            {dayLabel} · {formatEtDateLong(filters.date)} — start-of-day and
+            end-of-day reports, all times in ET.
           </p>
         </div>
         <Link href="/client/vas" className="btn-ghost self-start sm:self-auto">
@@ -80,11 +94,11 @@ export default async function ClientDashboardPage({
 
           {data.entries.length === 0 ? (
             <EmptyState
-              title="No entries found"
+              title="No entries for this day"
               body={
                 filtersActive
-                  ? "No time entries match your current filters. Try widening the date range or clearing filters."
-                  : "Your VAs haven’t logged any time yet. Entries will appear here as they clock in and out."
+                  ? "No entries match your current filters on this day. Try another day or clear the filters."
+                  : `No start-of-day or end-of-day reports for ${formatEtDateLong(filters.date)} yet. Try Today, Yesterday, or pick another day.`
               }
               action={
                 filtersActive ? (
@@ -97,7 +111,12 @@ export default async function ClientDashboardPage({
           ) : (
             <section className="space-y-4" aria-label="Time entries">
               {data.entries.map((entry) => (
-                <DashboardEntryCard key={entry.id} entry={entry} />
+                <DashboardEntryCard
+                  key={entry.id}
+                  entry={entry}
+                  canDelete={canDelete}
+                  viewerId={session.userId}
+                />
               ))}
             </section>
           )}

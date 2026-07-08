@@ -94,6 +94,13 @@ export const commentSchema = z.object({
 });
 export type CommentInput = z.infer<typeof commentSchema>;
 
+/** A Sales Desk notice posted to a fixed team channel. */
+export const salesNoticeSchema = z.object({
+  channel: z.enum(["TECH_SUPPORT", "ADMIN_INQUIRY"]),
+  body: requiredText("Message", 2000),
+});
+export type SalesNoticeInput = z.infer<typeof salesNoticeSchema>;
+
 export const addMemberSchema = z.object({
   name: requiredText("Name", 120),
   email: z.string().trim().min(1, "Email is required.").email("Enter a valid email."),

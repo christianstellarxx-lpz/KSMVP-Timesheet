@@ -14,12 +14,11 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  // Runtime queries use DATABASE_URL (pooled is fine). Migrations use a DIRECT
-  // (non-pooled) connection via DATABASE_URL_UNPOOLED. With Vercel/Neon's
-  // integrated Postgres both are set automatically; for an external database
-  // set both to the same connection string.
-  url       = env("DATABASE_URL")
-  directUrl = env("DATABASE_URL_UNPOOLED")
+  // Uses the DIRECT (non-pooled) connection for both runtime and migrations —
+  // simplest and most reliable at this scale. Vercel/Neon's integrated Postgres
+  // sets DATABASE_URL_UNPOOLED automatically; for an external database, point it
+  // at your connection string. The same value works locally and in production.
+  url = env("DATABASE_URL_UNPOOLED")
 }
 
 // Role values: "ADMIN" | "VA_ADMIN" | "VA" | "INTERN"   (see src/lib/session.ts)
@@ -45,6 +44,13 @@ model User {
 
   // Comments this user (as an admin / VA admin) has written on entries.
   authoredComments Comment[] @relation("CommentAuthor")
+
+  // Daily Flappy Bird scores (VA dashboard game).
+  gameScores GameScore[] @relation("GameScores")
+
+  // Sales-desk notices this user sent (Sales Producer) / received (team channel).
+  sentNotices     Notice[] @relation("NoticeSender")
+  receivedNotices Notice[] @relation("NoticeRecipient")
 
   @@index([clientId])
   @@index([role])
@@ -103,4 +109,45 @@ model Comment {
 
   @@index([entryId])
   @@index([authorId])
+}
+
+// A daily Flappy Bird score. One row per user per ET day (they play once a day
+// after clocking in). `playDate` is the ET calendar day at UTC-midnight, like
+// TimeEntry.workDate. The all-time best per user powers the leaderboard.
+model GameScore {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("GameScores", fields: [userId], references: [id], onDelete: Cascade)
+
+  score    Int
+  playDate DateTime // the ET day this score was set (one play per day)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, playDate])
+  @@index([score])
+}
+
+// A message the Sales Producer sends to a fixed team channel from the Sales
+// Desk. Each recipient gets their OWN row so per-person read state is
+// independent — it shows on the recipient's dashboard (VA or admin) as a "new
+// message" notice until they dismiss it (readAt set). No email is sent.
+model Notice {
+  id String @id @default(cuid())
+
+  // Which channel it was sent to: "TECH_SUPPORT" | "ADMIN_INQUIRY".
+  channel String
+  body    String
+
+  senderId String
+  sender   User   @relation("NoticeSender", fields: [senderId], references: [id], onDelete: Cascade)
+
+  recipientId String
+  recipient   User   @relation("NoticeRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  readAt    DateTime? // null until the recipient dismisses it
+  createdAt DateTime  @default(now())
+
+  @@index([recipientId, readAt])
+  @@index([senderId])
 }

@@ -8,6 +8,10 @@ import { getSession, homePathForRole } from "@/lib/session";
 export const metadata = { title: "Sign in — KSMVP VA Tasks" };
 export const dynamic = "force-dynamic";
 
+// Roles that appear in the "Admins" box on login. The Sales Producer sits here
+// alongside the admins (she has an org-level desk), not with the Virtual Team.
+const ADMIN_BOX_ROLES = new Set(["ADMIN", "SALES_PRODUCER"]);
+
 const TEAM_ROLE_ORDER: Record<string, number> = {
   VA_ADMIN: 0,
   VA: 1,
@@ -33,10 +37,10 @@ export default async function LoginPage() {
   });
 
   const admins = users
-    .filter((u) => u.role === "ADMIN")
+    .filter((u) => ADMIN_BOX_ROLES.has(u.role))
     .map(toQuickUser);
   const team = users
-    .filter((u) => u.role !== "ADMIN")
+    .filter((u) => !ADMIN_BOX_ROLES.has(u.role))
     .sort(
       (a, b) =>
         (TEAM_ROLE_ORDER[a.role] ?? 9) - (TEAM_ROLE_ORDER[b.role] ?? 9) ||

@@ -1,12 +1,14 @@
 "use client";
 
-import { useRef } from "react";
 import Link from "next/link";
-import type { DashboardFilters as Filters } from "@/lib/dashboard";
+import { useRouter } from "next/navigation";
+import type { DashboardFilters as Filters, DayFilter } from "@/lib/dashboard";
 
 /**
- * Filter/sort bar. Implemented as a GET form so it works without client JS;
- * with JS it auto-submits on change for a live feel.
+ * Dashboard controls. The primary control is a day selector — Today (default),
+ * Yesterday, or "The other day" (pick any date). Secondary VA / sort / urgent
+ * filters sit below. Every change navigates via the router, always preserving
+ * the current day and the other filters.
  */
 export function DashboardFilters({
   vas,
@@ -15,26 +17,93 @@ export function DashboardFilters({
   vas: { id: string; name: string }[];
   filters: Filters;
 }) {
-  const formRef = useRef<HTMLFormElement>(null);
-  const submit = () => formRef.current?.requestSubmit();
+  const router = useRouter();
+
+  // Build the next URL from the current filters plus any overrides, then go.
+  const go = (overrides: {
+    day?: DayFilter;
+    date?: string;
+    vaId?: string;
+    sort?: string;
+    urgent?: string;
+  }) => {
+    const p = new URLSearchParams();
+
+    const vaId = overrides.vaId ?? filters.vaId;
+    if (vaId) p.set("vaId", vaId);
+
+    p.set("sort", overrides.sort ?? filters.sort);
+
+    const urgent = overrides.urgent ?? (filters.urgentOnly ? "1" : "");
+    if (urgent) p.set("urgent", "1");
+
+    const day = overrides.day ?? filters.day;
+    p.set("day", day);
+    if (day === "other") {
+      const date = overrides.date ?? filters.date;
+      if (date) p.set("date", date);
+    }
+
+    router.push(`/client?${p.toString()}`);
+  };
 
   return (
-    <form
-      ref={formRef}
-      method="get"
-      action="/client"
-      className="card flex flex-col gap-4 p-4 sm:p-5"
-    >
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="card flex flex-col gap-4 p-4 sm:p-5">
+      {/* Day selector */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <span className="field-label">Showing</span>
+          <div className="inline-flex rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] p-1">
+            <DayButton
+              active={filters.day === "today"}
+              onClick={() => go({ day: "today" })}
+            >
+              Today
+            </DayButton>
+            <DayButton
+              active={filters.day === "yesterday"}
+              onClick={() => go({ day: "yesterday" })}
+            >
+              Yesterday
+            </DayButton>
+            <DayButton
+              active={filters.day === "other"}
+              // Clear the date so the server defaults to a recent past day.
+              onClick={() => go({ day: "other", date: "" })}
+            >
+              The other day
+            </DayButton>
+          </div>
+        </div>
+
+        {filters.day === "other" && (
+          <div>
+            <label htmlFor="f-date" className="field-label">
+              Pick a day
+            </label>
+            <input
+              id="f-date"
+              type="date"
+              defaultValue={filters.date}
+              onChange={(e) =>
+                e.target.value && go({ day: "other", date: e.target.value })
+              }
+              className="field-input"
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Secondary filters */}
+      <div className="grid grid-cols-1 gap-4 border-t border-[var(--border)] pt-4 sm:grid-cols-2 lg:grid-cols-3">
         <div>
           <label htmlFor="f-va" className="field-label">
             Virtual assistant
           </label>
           <select
             id="f-va"
-            name="vaId"
             defaultValue={filters.vaId ?? ""}
-            onChange={submit}
+            onChange={(e) => go({ vaId: e.target.value })}
             className="field-input"
           >
             <option value="">All VAs</option>
@@ -47,42 +116,13 @@ export function DashboardFilters({
         </div>
 
         <div>
-          <label htmlFor="f-from" className="field-label">
-            From
-          </label>
-          <input
-            id="f-from"
-            name="from"
-            type="date"
-            defaultValue={filters.from ?? ""}
-            onChange={submit}
-            className="field-input"
-          />
-        </div>
-
-        <div>
-          <label htmlFor="f-to" className="field-label">
-            To
-          </label>
-          <input
-            id="f-to"
-            name="to"
-            type="date"
-            defaultValue={filters.to ?? ""}
-            onChange={submit}
-            className="field-input"
-          />
-        </div>
-
-        <div>
           <label htmlFor="f-sort" className="field-label">
             Sort by
           </label>
           <select
             id="f-sort"
-            name="sort"
             defaultValue={filters.sort}
-            onChange={submit}
+            onChange={(e) => go({ sort: e.target.value })}
             className="field-input"
           >
             <option value="date_desc">Date — newest first</option>
@@ -92,33 +132,55 @@ export function DashboardFilters({
             <option value="urgent_first">Urgent first</option>
           </select>
         </div>
+
+        <div className="flex items-end">
+          <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-[var(--text)]">
+            <input
+              type="checkbox"
+              defaultChecked={filters.urgentOnly}
+              onChange={(e) => go({ urgent: e.target.checked ? "1" : "" })}
+              className="h-4 w-4 rounded border-[var(--border)] text-brand-orange-500 focus:ring-brand-orange-300"
+            />
+            Urgent entries only
+          </label>
+        </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-[var(--text)]">
-          <input
-            type="checkbox"
-            name="urgent"
-            value="1"
-            defaultChecked={filters.urgentOnly}
-            onChange={submit}
-            className="h-4 w-4 rounded border-[var(--border)] text-brand-orange-500 focus:ring-brand-orange-300"
-          />
-          Urgent entries only
-        </label>
-
-        <div className="flex items-center gap-2">
+      {(filters.vaId || filters.urgentOnly || filters.day !== "today") && (
+        <div className="flex items-center justify-end">
           <Link
             href="/client"
             className="text-sm font-heading font-medium text-[var(--text-muted)] underline-offset-2 hover:text-brand-blue-700 hover:underline"
           >
-            Clear filters
+            Reset to today
           </Link>
-          <button type="submit" className="btn-primary px-4 text-sm sm:min-h-[40px]">
-            Apply
-          </button>
         </div>
-      </div>
-    </form>
+      )}
+    </div>
+  );
+}
+
+function DayButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`rounded-md px-3 py-1.5 text-sm font-heading font-semibold transition-colors ${
+        active
+          ? "bg-brand-blue-600 text-white shadow-sm"
+          : "text-[var(--text-muted)] hover:text-brand-blue-700"
+      }`}
+    >
+      {children}
+    </button>
   );
 }

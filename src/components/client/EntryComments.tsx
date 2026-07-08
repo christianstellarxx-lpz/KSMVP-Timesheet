@@ -1,10 +1,11 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
-import { addCommentAction } from "@/app/client/actions";
+import { addCommentAction, deleteCommentAction } from "@/app/client/actions";
 import { emptyFormState } from "@/lib/formState";
 import type { CommentDTO } from "@/lib/comments";
 import { SubmitButton } from "@/components/SubmitButton";
+import { DeleteButton } from "./DeleteButton";
 
 const TARGET_OPTIONS = [
   { value: "END", label: "End of Day Report" },
@@ -16,10 +17,14 @@ export function EntryComments({
   entryId,
   comments,
   vaName,
+  canDelete,
+  viewerId,
 }: {
   entryId: string;
   comments: CommentDTO[];
   vaName: string;
+  canDelete: boolean;
+  viewerId: string;
 }) {
   const [state, formAction] = useActionState(addCommentAction, emptyFormState);
   const [open, setOpen] = useState(false);
@@ -78,6 +83,15 @@ export function EntryComments({
                   />
                   {c.unread ? `Awaiting ${firstName}` : `Seen by ${firstName}`}
                 </span>
+                {canDelete && c.authorId === viewerId && (
+                  <DeleteButton
+                    action={deleteCommentAction}
+                    fields={{ commentId: c.id }}
+                    label="Delete this comment"
+                    confirmText="Delete this comment? This can't be undone."
+                    className="inline-grid h-6 w-6 place-items-center rounded text-[var(--text-muted)] transition-colors hover:bg-brand-orange-50 hover:text-brand-orange-600 disabled:opacity-50"
+                  />
+                )}
               </div>
               <p className="whitespace-pre-wrap break-words text-sm text-[var(--text)]">
                 {c.body}

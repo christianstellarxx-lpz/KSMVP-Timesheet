@@ -18,8 +18,9 @@ export interface TeamMember {
 const ROLE_ORDER: Record<Role, number> = {
   ADMIN: 0,
   VA_ADMIN: 1,
-  VA: 2,
-  INTERN: 3,
+  SALES_PRODUCER: 2,
+  VA: 3,
+  INTERN: 4,
 };
 
 /** The full org roster, ordered by role then name. */
