@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin, isFullAdmin } from "@/lib/session";
 import { addTeamMember } from "@/lib/vas";
 import { addComment, deleteOwnComment } from "@/lib/comments";
-import { deleteTimeEntry } from "@/lib/dashboard";
+import { deleteTimeEntry, clearUrgent } from "@/lib/dashboard";
 import { addMemberSchema, commentSchema } from "@/lib/validation";
 import { fieldErrorsFromZod, type FormState } from "@/lib/formState";
 
@@ -60,6 +60,22 @@ export async function deleteEntryAction(formData: FormData): Promise<void> {
   if (!entryId) return;
 
   await deleteTimeEntry(entryId);
+  revalidatePath("/client");
+  revalidatePath("/va");
+}
+
+/**
+ * Clear a VA's urgent flag once it's been handled. Any admin-dashboard user
+ * (ADMIN or VA_ADMIN) can do this — it's a routine "handled" action, not a
+ * destructive delete.
+ */
+export async function removeUrgentAction(formData: FormData): Promise<void> {
+  await requireAdmin();
+
+  const entryId = String(formData.get("entryId") ?? "");
+  if (!entryId) return;
+
+  await clearUrgent(entryId);
   revalidatePath("/client");
   revalidatePath("/va");
 }

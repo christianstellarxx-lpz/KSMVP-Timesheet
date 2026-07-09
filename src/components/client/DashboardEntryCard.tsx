@@ -3,7 +3,8 @@ import { UrgentBanner } from "@/components/UrgentBanner";
 import { StatusBadge, PunctualityChips } from "@/components/Badges";
 import { EntryComments } from "./EntryComments";
 import { DeleteButton } from "./DeleteButton";
-import { deleteEntryAction } from "@/app/client/actions";
+import { RemoveUrgentButton } from "./RemoveUrgentButton";
+import { deleteEntryAction, removeUrgentAction } from "@/app/client/actions";
 
 export function DashboardEntryCard({
   entry,
@@ -86,8 +87,19 @@ export function DashboardEntryCard({
           />
         </div>
 
-        {/* Urgent — prominent, only when filled */}
-        {urgent && entry.urgentNeed && <UrgentBanner text={entry.urgentNeed} />}
+        {/* Urgent — prominent, only when filled. Admins can clear it once handled. */}
+        {urgent && entry.urgentNeed && (
+          <UrgentBanner
+            text={entry.urgentNeed}
+            action={
+              <RemoveUrgentButton
+                action={removeUrgentAction}
+                entryId={entry.id}
+                vaName={entry.vaName}
+              />
+            }
+          />
+        )}
 
         {/* Side-by-side tasks (stack on mobile) */}
         <div className="grid gap-4 sm:grid-cols-2">

@@ -2,9 +2,12 @@
 export function UrgentBanner({
   text,
   compact = false,
+  action,
 }: {
   text: string;
   compact?: boolean;
+  /** Optional trailing control (e.g. an admin "remove" button). */
+  action?: React.ReactNode;
 }) {
   return (
     <div
@@ -28,7 +31,7 @@ export function UrgentBanner({
           strokeLinejoin="round"
         />
       </svg>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="font-heading text-xs font-bold uppercase tracking-wide text-brand-orange-700">
           Urgent need / support
         </p>
@@ -36,6 +39,7 @@ export function UrgentBanner({
           {text}
         </p>
       </div>
+      {action && <div className="shrink-0 self-start">{action}</div>}
     </div>
   );
 }

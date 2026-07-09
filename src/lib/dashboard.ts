@@ -115,6 +115,14 @@ export async function deleteTimeEntry(entryId: string): Promise<void> {
   await prisma.timeEntry.deleteMany({ where: { id: entryId } });
 }
 
+/** Clear a VA's urgent flag once an admin has handled it. */
+export async function clearUrgent(entryId: string): Promise<void> {
+  await prisma.timeEntry.updateMany({
+    where: { id: entryId },
+    data: { urgentNeed: null },
+  });
+}
+
 export async function getDashboardData(
   filters: DashboardFilters,
 ): Promise<DashboardData> {
