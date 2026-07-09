@@ -97,10 +97,27 @@ export function FlappyGame({ game, meId }: { game: GameState; meId: string }) {
   // Keyboard: Space / ArrowUp to flap or start.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.code === "Space" || e.code === "ArrowUp") {
-        e.preventDefault();
-        tap();
+      if (e.code !== "Space" && e.code !== "ArrowUp") return;
+
+      // Never hijack the key while the user is typing in a form field —
+      // otherwise Space can't be typed in the Time In / Time Out task boxes.
+      const t = e.target as HTMLElement | null;
+      if (
+        t &&
+        (t.tagName === "INPUT" ||
+          t.tagName === "TEXTAREA" ||
+          t.tagName === "SELECT" ||
+          t.isContentEditable)
+      ) {
+        return;
       }
+
+      // Only react when the game is actually on-screen and playable.
+      const s = statusRef.current;
+      if (s !== "intro" && s !== "playing") return;
+
+      e.preventDefault();
+      tap();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
