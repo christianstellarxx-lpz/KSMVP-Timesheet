@@ -1,8 +1,8 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useState } from "react";
+import { useFormStatus } from "react-dom";
 import { Modal } from "@/components/Modal";
-import { SubmitButton } from "@/components/SubmitButton";
 import { timeOutAction } from "@/app/va/actions";
 import { emptyFormState } from "@/lib/formState";
 
@@ -89,7 +89,7 @@ export function TimeOutModal({
           )}
         </div>
 
-        {/* Scheduler note */}
+        {/* How the two submit options differ */}
         <p className="flex items-start gap-2 rounded-lg bg-brand-blue-50 px-3 py-2.5 text-sm text-brand-blue-800">
           <svg
             className="mt-0.5 h-4 w-4 shrink-0"
@@ -107,21 +107,94 @@ export function TimeOutModal({
             />
           </svg>
           <span>
-            <span className="font-semibold">Atake</span> schedules your report to
-            reach your client at <span className="font-semibold">5:00 PM ET</span>.
-            If it’s already past 5 PM, it sends right away.
+            <span className="font-semibold">Schedule now</span> holds your report
+            until <span className="font-semibold">5:00 PM ET</span> before your
+            client sees it (or right away if it’s already past 5).{" "}
+            <span className="font-semibold">Enter now</span> shares it with your
+            client immediately.
           </span>
         </p>
 
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <button type="button" onClick={onClose} className="btn-ghost">
-            Cancel
-          </button>
-          <SubmitButton className="btn-action px-6" pendingLabel="Scheduling…">
-            Atake
-          </SubmitButton>
-        </div>
+        <Actions onClose={onClose} />
       </form>
     </Modal>
+  );
+}
+
+/**
+ * Cancel + the two submit options. Both submit the same form; the clicked
+ * button's `intent` (schedule | now) tells the server how to publish the report.
+ */
+function Actions({ onClose }: { onClose: () => void }) {
+  const { pending } = useFormStatus();
+  const [clicked, setClicked] = useState<"now" | "schedule" | null>(null);
+
+  return (
+    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+      <button
+        type="button"
+        onClick={onClose}
+        disabled={pending}
+        className="btn-ghost"
+      >
+        Cancel
+      </button>
+      <button
+        type="submit"
+        name="intent"
+        value="now"
+        onClick={() => setClicked("now")}
+        disabled={pending}
+        aria-busy={pending && clicked === "now"}
+        className="btn-primary px-6"
+      >
+        {pending && clicked === "now" ? (
+          <>
+            <Spinner />
+            Sending…
+          </>
+        ) : (
+          "Enter now"
+        )}
+      </button>
+      <button
+        type="submit"
+        name="intent"
+        value="schedule"
+        onClick={() => setClicked("schedule")}
+        disabled={pending}
+        aria-busy={pending && clicked === "schedule"}
+        className="btn-action px-6"
+      >
+        {pending && clicked === "schedule" ? (
+          <>
+            <Spinner />
+            Scheduling…
+          </>
+        ) : (
+          "Schedule now"
+        )}
+      </button>
+    </div>
+  );
+}
+
+function Spinner() {
+  return (
+    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle
+        className="opacity-25"
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeWidth="4"
+      />
+      <path
+        className="opacity-90"
+        fill="currentColor"
+        d="M4 12a8 8 0 0 1 8-8V0C5.4 0 0 5.4 0 12h4z"
+      />
+    </svg>
   );
 }

@@ -95,17 +95,21 @@ export function DashboardEntryCard({
             title="Start-of-day tasks"
             text={entry.startOfDayTasks}
           />
-          <TaskColumn
-            title="End of Day Report"
-            text={entry.endOfDayTasks}
-            emptyLabel={
-              entry.status === "INCOMPLETE"
-                ? "No time-out logged — awaiting the VA’s end-of-day report."
-                : entry.status === "OPEN"
-                  ? "Still in progress."
-                  : "—"
-            }
-          />
+          {entry.endOfDayScheduled ? (
+            <ScheduledColumn publishLabel={entry.endOfDayPublishLabel} />
+          ) : (
+            <TaskColumn
+              title="End of Day Report"
+              text={entry.endOfDayTasks}
+              emptyLabel={
+                entry.status === "INCOMPLETE"
+                  ? "No time-out logged — awaiting the VA’s end-of-day report."
+                  : entry.status === "OPEN"
+                    ? "Still in progress."
+                    : "—"
+              }
+            />
+          )}
         </div>
 
         {/* Admin feedback thread + add-comment form */}
@@ -181,6 +185,32 @@ function PtoRow({
         </p>
       </div>
     </article>
+  );
+}
+
+function ScheduledColumn({ publishLabel }: { publishLabel: string | null }) {
+  return (
+    <div>
+      <p className="field-label">End of Day Report</p>
+      <p className="flex min-h-[3rem] items-center gap-2 rounded-lg border border-dashed border-brand-blue-300 bg-brand-blue-50 px-3 py-2.5 text-sm font-medium text-brand-blue-800">
+        <svg
+          className="h-4 w-4 shrink-0"
+          viewBox="0 0 24 24"
+          fill="none"
+          aria-hidden
+        >
+          <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
+          <path
+            d="M12 7v5l3 2"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        Scheduled — visible at {publishLabel ?? "5:00 PM"} ET.
+      </p>
+    </div>
   );
 }
 

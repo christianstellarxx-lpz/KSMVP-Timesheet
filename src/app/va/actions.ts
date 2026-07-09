@@ -48,7 +48,10 @@ export async function timeOutAction(
   });
   if (!parsed.success) return { fieldErrors: fieldErrorsFromZod(parsed.error) };
 
-  const result = await timeOutForVa(session.userId, parsed.data);
+  // Which button was clicked: "Schedule now" holds the report until 5 PM ET;
+  // "Enter now" (default) makes it visible to admins immediately.
+  const schedule = formData.get("intent") === "schedule";
+  const result = await timeOutForVa(session.userId, parsed.data, schedule);
   if (!result.ok) return { error: result.message };
 
   revalidatePath("/va");

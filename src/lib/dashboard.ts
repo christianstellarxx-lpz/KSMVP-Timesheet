@@ -49,6 +49,10 @@ export interface DashboardEntry {
   endOfDayTasks: string | null;
   urgentNeed: string | null;
   hasUrgent: boolean;
+  /** End-of-Day report is scheduled — held from view until publish time. */
+  endOfDayScheduled: boolean;
+  /** When the scheduled End-of-Day report becomes visible (e.g. "5:00 PM"). */
+  endOfDayPublishLabel: string | null;
   chips: PunctualityChip[];
   comments: CommentDTO[];
 }
@@ -136,25 +140,25 @@ export async function getDashboardData(
     where.vaId = filters.vaId;
   }
   // Single-day view: entries whose ET work date matches the resolved date.
+  // The entry itself (start-of-day, times) is always shown; only a scheduled
+  // End-of-Day report is masked until its publish time — handled below.
   where.workDate = etDateStringToStorageDate(filters.date);
-
-  // Hold scheduled End-of-Day reports ("Atake") until their publish time
-  // (5 PM ET). publishAt null = always visible (PTO, resolved sessions, legacy).
-  const and: Prisma.TimeEntryWhereInput[] = [
-    { OR: [{ publishAt: null }, { publishAt: { lte: new Date() } }] },
-  ];
   if (filters.urgentOnly) {
-    and.push({ urgentNeed: { not: null } }, { urgentNeed: { not: "" } });
+    where.AND = [{ urgentNeed: { not: null } }, { urgentNeed: { not: "" } }];
   }
-  where.AND = and;
 
   const rows = await prisma.timeEntry.findMany({
     where,
     include: { va: { select: { id: true, name: true } }, ...commentInclude },
   });
 
+  const now = Date.now();
   const entries: DashboardEntry[] = rows.map((r) => {
     const workDate = storageDateToEtDateString(r.workDate);
+    // A scheduled End-of-Day report stays hidden until publishAt (5 PM ET).
+    // The report text is masked server-side so it never reaches the browser.
+    const endOfDayScheduled =
+      r.publishAt != null && r.publishAt.getTime() > now;
     return {
       id: r.id,
       vaId: r.vaId,
@@ -167,9 +171,11 @@ export async function getDashboardData(
       timeOutLabel: r.timeOut ? formatEtTime(r.timeOut) : null,
       hoursWorked: r.hoursWorked != null ? Number(r.hoursWorked) : null,
       startOfDayTasks: r.startOfDayTasks,
-      endOfDayTasks: r.endOfDayTasks,
+      endOfDayTasks: endOfDayScheduled ? null : r.endOfDayTasks,
       urgentNeed: r.urgentNeed,
       hasUrgent: hasUrgent(r.urgentNeed),
+      endOfDayScheduled,
+      endOfDayPublishLabel: r.publishAt ? formatEtTime(r.publishAt) : null,
       chips: classifyPunctuality(workDate, r.timeIn, r.timeOut, grace).chips,
       comments: r.comments.map(toCommentDTO),
     };

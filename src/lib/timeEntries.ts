@@ -274,10 +274,18 @@ export async function timeInForVa(
   }
 }
 
-/** Clock out: closes today's OPEN entry and computes hours worked. */
+/**
+ * Clock out: closes today's OPEN entry and computes hours worked.
+ * `schedule` controls when the End-of-Day report becomes visible to admins:
+ *  - true  ("Schedule now"): held until 5:00 PM ET on the work date (auto-shows
+ *    immediately if it's already past 5 PM).
+ *  - false ("Enter now"): visible to admins right away.
+ * Either way the start-of-day entry itself stays visible on the admin dashboard.
+ */
 export async function timeOutForVa(
   vaId: string,
   input: TimeOutInput,
+  schedule: boolean,
 ): Promise<MutationResult> {
   const timeOut = etWallClockToUtc(input.timeOutWallClock);
   if (!timeOut) return { ok: false, message: "Enter a valid time-out." };
@@ -293,13 +301,12 @@ export async function timeOutForVa(
       if (timeOut.getTime() <= active.timeIn.getTime()) {
         throw new Error("Time out must be after time in.");
       }
-      // "Atake" scheduler: the End-of-Day report reaches the admins at 5:00 PM ET
-      // on the work date. If it's already past 5 PM, publishAt is in the past, so
-      // the entry publishes immediately (auto-publish).
-      const publishAt = scheduledInstant(
-        storageDateToEtDateString(active.workDate),
-        SCHEDULE.timeOut,
-      );
+      const publishAt = schedule
+        ? scheduledInstant(
+            storageDateToEtDateString(active.workDate),
+            SCHEDULE.timeOut,
+          )
+        : null;
       await tx.timeEntry.update({
         where: { id: active.id },
         data: {
