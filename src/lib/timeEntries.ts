@@ -1,4 +1,5 @@
 import "server-only";
+import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { commentInclude, toCommentDTO, type CommentDTO } from "./comments";
 import {
@@ -10,6 +11,7 @@ import {
   etWallClockToUtc,
   presetWallClock,
   instantToEtWallClock,
+  scheduledInstant,
   formatEtTime,
   formatEtDateLong,
   computeHoursWorked,
@@ -42,6 +44,10 @@ export interface EntryDTO {
   endOfDayTasks: string | null;
   urgentNeed: string | null;
   hasUrgent: boolean;
+  /** When the End-of-Day report is scheduled to reach the admins (5 PM ET). */
+  publishAtLabel: string | null;
+  /** True while publishAt is still in the future — held from the admin view. */
+  isScheduled: boolean;
 }
 
 /** An entry that has admin feedback, surfaced on the VA dashboard. */
@@ -81,8 +87,11 @@ function toDTO(entry: {
   startOfDayTasks: string;
   endOfDayTasks: string | null;
   urgentNeed: string | null;
+  publishAt: Date | null;
 }): EntryDTO {
   const workDate = storageDateToEtDateString(entry.workDate);
+  const isScheduled =
+    entry.publishAt != null && entry.publishAt.getTime() > Date.now();
   return {
     id: entry.id,
     workDate,
@@ -98,7 +107,52 @@ function toDTO(entry: {
     endOfDayTasks: entry.endOfDayTasks,
     urgentNeed: entry.urgentNeed,
     hasUrgent: hasUrgent(entry.urgentNeed),
+    publishAtLabel: entry.publishAt ? formatEtTime(entry.publishAt) : null,
+    isScheduled,
   };
+}
+
+/**
+ * Transient connectivity errors worth retrying — chiefly Neon serverless
+ * resuming from autosuspend, which can drop the connection or exceed the
+ * transaction's start window (Prisma P2028: "Unable to start a transaction in
+ * the given time"). Business-logic throws (duplicate session, etc.) are NOT
+ * transient and must propagate on the first try.
+ */
+function isTransientDbError(e: unknown): boolean {
+  const code =
+    e instanceof Prisma.PrismaClientKnownRequestError ? e.code : undefined;
+  if (code && ["P2028", "P1001", "P1002", "P1008", "P1017"].includes(code)) {
+    return true;
+  }
+  const msg = e instanceof Error ? e.message : String(e);
+  return /transaction api error|unable to start a transaction|terminating connection due to administrator command|connection (?:closed|reset|terminated)|econnreset|server has closed the connection/i.test(
+    msg,
+  );
+}
+
+/**
+ * Run an interactive transaction with a generous start window (so a Neon cold
+ * start doesn't blow the default 2s `maxWait`) and a few automatic retries on
+ * transient connectivity errors. The callback must be idempotent — it re-runs
+ * on retry — which ours are (they re-check state before writing).
+ */
+async function withTx<T>(
+  fn: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> {
+  const options = { maxWait: 8000, timeout: 15000 };
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await prisma.$transaction(fn, options);
+    } catch (e) {
+      lastError = e;
+      if (!isTransientDbError(e)) throw e;
+      // Short backoff to let Neon finish resuming before the next attempt.
+      await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+    }
+  }
+  throw lastError;
 }
 
 /**
@@ -176,7 +230,7 @@ export async function timeInForVa(
   const workDate = etDateStringToStorageDate(today);
 
   try {
-    await prisma.$transaction(async (tx) => {
+    await withTx(async (tx) => {
       // Re-run the stale safeguard inside the transaction for consistency.
       await tx.timeEntry.updateMany({
         where: { vaId, status: "OPEN", workDate: { lt: workDate } },
@@ -229,7 +283,7 @@ export async function timeOutForVa(
   if (!timeOut) return { ok: false, message: "Enter a valid time-out." };
 
   try {
-    await prisma.$transaction(async (tx) => {
+    await withTx(async (tx) => {
       const active = await tx.timeEntry.findFirst({
         where: { vaId, status: "OPEN" },
       });
@@ -239,6 +293,13 @@ export async function timeOutForVa(
       if (timeOut.getTime() <= active.timeIn.getTime()) {
         throw new Error("Time out must be after time in.");
       }
+      // "Atake" scheduler: the End-of-Day report reaches the admins at 5:00 PM ET
+      // on the work date. If it's already past 5 PM, publishAt is in the past, so
+      // the entry publishes immediately (auto-publish).
+      const publishAt = scheduledInstant(
+        storageDateToEtDateString(active.workDate),
+        SCHEDULE.timeOut,
+      );
       await tx.timeEntry.update({
         where: { id: active.id },
         data: {
@@ -246,6 +307,7 @@ export async function timeOutForVa(
           endOfDayTasks: input.endOfDayTasks,
           hoursWorked: computeHoursWorked(active.timeIn, timeOut),
           status: "CLOSED",
+          publishAt,
         },
       });
     });
@@ -264,7 +326,7 @@ export async function resolveStaleForVa(
   if (!timeOut) return { ok: false, message: "Enter a valid time-out." };
 
   try {
-    await prisma.$transaction(async (tx) => {
+    await withTx(async (tx) => {
       const entry = await tx.timeEntry.findFirst({
         where: {
           id: input.entryId,
@@ -302,7 +364,7 @@ export async function logPtoForVa(
   const workDate = etDateStringToStorageDate(input.date);
 
   try {
-    await prisma.$transaction(async (tx) => {
+    await withTx(async (tx) => {
       const existing = await tx.timeEntry.findFirst({
         where: { vaId, workDate },
       });
@@ -331,6 +393,10 @@ export async function logPtoForVa(
 }
 
 function messageFrom(e: unknown): string {
+  // Never surface raw DB/connectivity errors (e.g. Neon resuming) to the user.
+  if (isTransientDbError(e)) {
+    return "The server was waking up and didn’t respond in time. Please try again in a moment.";
+  }
   return e instanceof Error && e.message
     ? e.message
     : "Something went wrong. Please try again.";

@@ -137,9 +137,16 @@ export async function getDashboardData(
   }
   // Single-day view: entries whose ET work date matches the resolved date.
   where.workDate = etDateStringToStorageDate(filters.date);
+
+  // Hold scheduled End-of-Day reports ("Atake") until their publish time
+  // (5 PM ET). publishAt null = always visible (PTO, resolved sessions, legacy).
+  const and: Prisma.TimeEntryWhereInput[] = [
+    { OR: [{ publishAt: null }, { publishAt: { lte: new Date() } }] },
+  ];
   if (filters.urgentOnly) {
-    where.AND = [{ urgentNeed: { not: null } }, { urgentNeed: { not: "" } }];
+    and.push({ urgentNeed: { not: null } }, { urgentNeed: { not: "" } });
   }
+  where.AND = and;
 
   const rows = await prisma.timeEntry.findMany({
     where,

@@ -333,6 +333,29 @@ function CompletedCard({ entry }: { entry: EntryDTO }) {
         <StatusBadge status="CLOSED" />
       </div>
       <div className="space-y-5 p-5 sm:p-6">
+        {entry.isScheduled && entry.publishAtLabel && (
+          <p className="flex items-start gap-2 rounded-lg border border-brand-blue-200 bg-brand-blue-50 px-3 py-2.5 text-sm text-brand-blue-800">
+            <svg
+              className="mt-0.5 h-4 w-4 shrink-0"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden
+            >
+              <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
+              <path
+                d="M12 7v5l3 2"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span>
+              Scheduled — your End-of-Day report reaches your client at{" "}
+              <span className="font-semibold">{entry.publishAtLabel} ET</span>.
+            </span>
+          </p>
+        )}
         <div className="flex flex-wrap gap-x-10 gap-y-3">
           <TimeStat label="Time in" value={`${entry.timeInLabel} ET`} />
           <TimeStat label="Time out" value={`${entry.timeOutLabel} ET`} />

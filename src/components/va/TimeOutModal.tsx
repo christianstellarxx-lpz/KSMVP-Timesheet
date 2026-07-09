@@ -89,12 +89,36 @@ export function TimeOutModal({
           )}
         </div>
 
+        {/* Scheduler note */}
+        <p className="flex items-start gap-2 rounded-lg bg-brand-blue-50 px-3 py-2.5 text-sm text-brand-blue-800">
+          <svg
+            className="mt-0.5 h-4 w-4 shrink-0"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-hidden
+          >
+            <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
+            <path
+              d="M12 7v5l3 2"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          <span>
+            <span className="font-semibold">Atake</span> schedules your report to
+            reach your client at <span className="font-semibold">5:00 PM ET</span>.
+            If it’s already past 5 PM, it sends right away.
+          </span>
+        </p>
+
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button type="button" onClick={onClose} className="btn-ghost">
             Cancel
           </button>
-          <SubmitButton className="btn-action px-6" pendingLabel="Ending…">
-            End my day
+          <SubmitButton className="btn-action px-6" pendingLabel="Scheduling…">
+            Atake
           </SubmitButton>
         </div>
       </form>

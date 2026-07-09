@@ -79,6 +79,13 @@ model TimeEntry {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Scheduled publish time (UTC) for the End-of-Day report — the "Atake"
+  // scheduler. When set and still in the future, the entry is held back from
+  // the admin dashboard until this instant (5:00 PM ET on the work date).
+  // Null = visible to admins immediately (PTO, resolved stale sessions, and any
+  // entries created before this feature).
+  publishAt DateTime?
+
   // Admin feedback on this entry's start-of-day / end-of-day report.
   comments Comment[]
 
@@ -87,6 +94,7 @@ model TimeEntry {
   // Fast lookup / integrity for the "at most one OPEN entry per VA" guard.
   // Enforced at the application layer inside a transaction; see src/lib/timeEntries.ts.
   @@index([vaId, status])
+  @@index([publishAt])
 }
 
 // A note an admin (or VA admin) leaves on a VA's time entry. The VA sees it as
