@@ -49,10 +49,6 @@ export interface DashboardEntry {
   endOfDayTasks: string | null;
   urgentNeed: string | null;
   hasUrgent: boolean;
-  /** End-of-Day report is scheduled — held from view until publish time. */
-  endOfDayScheduled: boolean;
-  /** When the scheduled End-of-Day report becomes visible (e.g. "5:00 PM"). */
-  endOfDayPublishLabel: string | null;
   chips: PunctualityChip[];
   comments: CommentDTO[];
 }
@@ -156,27 +152,28 @@ export async function getDashboardData(
   const entries: DashboardEntry[] = rows.map((r) => {
     const workDate = storageDateToEtDateString(r.workDate);
     // A scheduled End-of-Day report stays hidden until publishAt (5 PM ET).
-    // The report text is masked server-side so it never reaches the browser.
-    const endOfDayScheduled =
-      r.publishAt != null && r.publishAt.getTime() > now;
+    // To keep the scheduling invisible to admins, the whole clock-out is masked
+    // and the entry is presented exactly like an ordinary in-progress session
+    // (still OPEN, no time-out, no hours, "Still in progress" report).
+    const scheduled = r.publishAt != null && r.publishAt.getTime() > now;
+    const timeOut = scheduled ? null : r.timeOut;
     return {
       id: r.id,
       vaId: r.vaId,
       vaName: r.va.name,
       workDate,
       workDateLabel: formatEtDateLong(workDate),
-      status: r.status as DashboardEntry["status"],
+      status: scheduled ? "OPEN" : (r.status as DashboardEntry["status"]),
       entryType: r.entryType as DashboardEntry["entryType"],
       timeInLabel: r.timeIn ? formatEtTime(r.timeIn) : null,
-      timeOutLabel: r.timeOut ? formatEtTime(r.timeOut) : null,
-      hoursWorked: r.hoursWorked != null ? Number(r.hoursWorked) : null,
+      timeOutLabel: timeOut ? formatEtTime(timeOut) : null,
+      hoursWorked:
+        scheduled || r.hoursWorked == null ? null : Number(r.hoursWorked),
       startOfDayTasks: r.startOfDayTasks,
-      endOfDayTasks: endOfDayScheduled ? null : r.endOfDayTasks,
+      endOfDayTasks: scheduled ? null : r.endOfDayTasks,
       urgentNeed: r.urgentNeed,
       hasUrgent: hasUrgent(r.urgentNeed),
-      endOfDayScheduled,
-      endOfDayPublishLabel: r.publishAt ? formatEtTime(r.publishAt) : null,
-      chips: classifyPunctuality(workDate, r.timeIn, r.timeOut, grace).chips,
+      chips: classifyPunctuality(workDate, r.timeIn, timeOut, grace).chips,
       comments: r.comments.map(toCommentDTO),
     };
   });
