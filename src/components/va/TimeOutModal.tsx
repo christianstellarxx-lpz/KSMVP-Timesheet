@@ -89,32 +89,6 @@ export function TimeOutModal({
           )}
         </div>
 
-        {/* How the two submit options differ */}
-        <p className="flex items-start gap-2 rounded-lg bg-brand-blue-50 px-3 py-2.5 text-sm text-brand-blue-800">
-          <svg
-            className="mt-0.5 h-4 w-4 shrink-0"
-            viewBox="0 0 24 24"
-            fill="none"
-            aria-hidden
-          >
-            <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
-            <path
-              d="M12 7v5l3 2"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          <span>
-            <span className="font-semibold">Schedule now</span> holds your report
-            until <span className="font-semibold">5:00 PM ET</span> before your
-            client sees it (or right away if it’s already past 5).{" "}
-            <span className="font-semibold">Enter now</span> shares it with your
-            client immediately.
-          </span>
-        </p>
-
         <Actions onClose={onClose} />
       </form>
     </Modal>
@@ -169,10 +143,10 @@ function Actions({ onClose }: { onClose: () => void }) {
         {pending && clicked === "schedule" ? (
           <>
             <Spinner />
-            Scheduling…
+            Atake na…
           </>
         ) : (
-          "Schedule now"
+          "Atake na"
         )}
       </button>
     </div>

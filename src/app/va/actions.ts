@@ -7,6 +7,7 @@ import {
   timeOutForVa,
   resolveStaleForVa,
   logPtoForVa,
+  updateEntryTextForVa,
 } from "@/lib/timeEntries";
 import { markCommentsReadForVa } from "@/lib/comments";
 import { submitGameScore, type SubmitScoreResult } from "@/lib/game";
@@ -15,6 +16,7 @@ import {
   timeOutSchema,
   resolveStaleSchema,
   ptoSchema,
+  updateTaskSchema,
 } from "@/lib/validation";
 import { fieldErrorsFromZod, type FormState } from "@/lib/formState";
 
@@ -48,13 +50,35 @@ export async function timeOutAction(
   });
   if (!parsed.success) return { fieldErrors: fieldErrorsFromZod(parsed.error) };
 
-  // Which button was clicked: "Schedule now" holds the report until 5 PM ET;
+  // Which button was clicked: "Atake na" holds the report until 5 PM ET;
   // "Enter now" (default) makes it visible to admins immediately.
   const schedule = formData.get("intent") === "schedule";
   const result = await timeOutForVa(session.userId, parsed.data, schedule);
   if (!result.ok) return { error: result.message };
 
   revalidatePath("/va");
+  return { ok: true };
+}
+
+/** VA edits their own start-of-day tasks or end-of-day report in place. */
+export async function updateEntryTextAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const session = await requireVA();
+  const parsed = updateTaskSchema.safeParse({
+    entryId: formData.get("entryId"),
+    field: formData.get("field"),
+    value: formData.get("value"),
+  });
+  if (!parsed.success) return { fieldErrors: fieldErrorsFromZod(parsed.error) };
+
+  const result = await updateEntryTextForVa(session.userId, parsed.data);
+  if (!result.ok) return { error: result.message };
+
+  // Reflect the edit on the VA's dashboard and the admin's view.
+  revalidatePath("/va");
+  revalidatePath("/client");
   return { ok: true };
 }
 

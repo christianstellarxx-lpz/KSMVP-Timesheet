@@ -14,6 +14,7 @@ import { ResolveStaleModal } from "./ResolveStaleModal";
 import { PtoModal } from "./PtoModal";
 import { AdminFeedback } from "./AdminFeedback";
 import { FlappyGame } from "./FlappyGame";
+import { EditableTask } from "./EditableTask";
 import { presetWallClock, SCHEDULE, SCHEDULE_SHIFT_LABEL } from "@/lib/time";
 
 export function VaDayClient({
@@ -299,12 +300,13 @@ function ActiveSessionCard({
           </p>
         </div>
 
-        <div>
-          <p className="field-label">Start-of-day tasks</p>
-          <p className="whitespace-pre-wrap break-words rounded-lg bg-[var(--surface-muted)] px-3 py-2.5 text-sm text-[var(--text)]">
-            {entry.startOfDayTasks}
-          </p>
-        </div>
+        <EditableTask
+          entryId={entry.id}
+          field="START"
+          label="Start-of-day tasks"
+          text={entry.startOfDayTasks}
+          placeholder="What do you plan to work on today?"
+        />
 
         {entry.hasUrgent && entry.urgentNeed && (
           <UrgentBanner text={entry.urgentNeed} />
@@ -351,7 +353,7 @@ function CompletedCard({ entry }: { entry: EntryDTO }) {
               />
             </svg>
             <span>
-              Scheduled — your End-of-Day report reaches your client at{" "}
+              Atake na — your End-of-Day report reaches your client at{" "}
               <span className="font-semibold">{entry.publishAtLabel} ET</span>.
             </span>
           </p>
@@ -369,10 +371,19 @@ function CompletedCard({ entry }: { entry: EntryDTO }) {
           <UrgentBanner text={entry.urgentNeed} />
         )}
         <div className="grid gap-4 sm:grid-cols-2">
-          <TaskBlock title="Start-of-day" text={entry.startOfDayTasks} />
-          <TaskBlock
-            title="End of Day Report"
-            text={entry.endOfDayTasks?.trim() || "—"}
+          <EditableTask
+            entryId={entry.id}
+            field="START"
+            label="Start-of-day"
+            text={entry.startOfDayTasks}
+            placeholder="What did you plan to work on today?"
+          />
+          <EditableTask
+            entryId={entry.id}
+            field="END"
+            label="End of Day Report"
+            text={entry.endOfDayTasks}
+            placeholder="What did you accomplish today? Include any notes or blockers."
           />
         </div>
       </div>
@@ -398,17 +409,6 @@ function TimeStat({
         }`}
       >
         {value}
-      </p>
-    </div>
-  );
-}
-
-function TaskBlock({ title, text }: { title: string; text: string }) {
-  return (
-    <div>
-      <p className="field-label">{title}</p>
-      <p className="whitespace-pre-wrap break-words rounded-lg bg-[var(--surface-muted)] px-3 py-2.5 text-sm text-[var(--text)]">
-        {text}
       </p>
     </div>
   );

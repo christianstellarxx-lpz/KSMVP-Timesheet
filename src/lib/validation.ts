@@ -55,6 +55,17 @@ export const timeOutSchema = z.object({
 });
 export type TimeOutInput = z.infer<typeof timeOutSchema>;
 
+/** VA editing their own start-of-day tasks or end-of-day report in place. */
+export const updateTaskSchema = z.object({
+  entryId: z.string().min(1),
+  field: z.enum(["START", "END"]),
+  value: z
+    .string()
+    .transform((s) => s.trim())
+    .pipe(z.string().min(1, "This can’t be empty.").max(5000)),
+});
+export type UpdateTaskInput = z.infer<typeof updateTaskSchema>;
+
 export const resolveStaleSchema = z.object({
   entryId: z.string().min(1),
   timeOutWallClock: wallClock,

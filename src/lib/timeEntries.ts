@@ -22,6 +22,7 @@ import type {
   TimeOutInput,
   ResolveStaleInput,
   PtoInput,
+  UpdateTaskInput,
 } from "./validation";
 
 export type MutationResult =
@@ -277,7 +278,7 @@ export async function timeInForVa(
 /**
  * Clock out: closes today's OPEN entry and computes hours worked.
  * `schedule` controls when the End-of-Day report becomes visible to admins:
- *  - true  ("Schedule now"): held until 5:00 PM ET on the work date (auto-shows
+ *  - true  ("Atake na"): held until 5:00 PM ET on the work date (auto-shows
  *    immediately if it's already past 5 PM).
  *  - false ("Enter now"): visible to admins right away.
  * Either way the start-of-day entry itself stays visible on the admin dashboard.
@@ -393,6 +394,32 @@ export async function logPtoForVa(
         },
       });
     });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: messageFrom(e) };
+  }
+}
+
+/**
+ * VA edits their own start-of-day tasks or end-of-day report in place. The
+ * `vaId` in the where-clause enforces ownership — a VA can only edit their own
+ * entries. Reaches admins on the next dashboard load (revalidated by the action).
+ */
+export async function updateEntryTextForVa(
+  vaId: string,
+  input: UpdateTaskInput,
+): Promise<MutationResult> {
+  try {
+    const res = await prisma.timeEntry.updateMany({
+      where: { id: input.entryId, vaId },
+      data:
+        input.field === "START"
+          ? { startOfDayTasks: input.value }
+          : { endOfDayTasks: input.value },
+    });
+    if (res.count === 0) {
+      return { ok: false, message: "That entry could not be found." };
+    }
     return { ok: true };
   } catch (e) {
     return { ok: false, message: messageFrom(e) };
