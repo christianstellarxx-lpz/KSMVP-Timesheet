@@ -494,49 +494,67 @@ function Leaderboard({
           No one has played this month yet. Be the first!
         </p>
       ) : (
-        <ol className="divide-y divide-[var(--border)] overflow-hidden rounded-lg border border-[var(--border)]">
-          {rows.map((r) => {
-            const isMe = r.userId === meId;
-            return (
-              <li
-                key={r.userId}
-                className={`flex items-center justify-between gap-3 px-3 py-2 text-sm ${
-                  isMe ? "bg-brand-blue-50" : ""
-                }`}
-              >
-                <span className="flex min-w-0 items-center gap-2">
-                  <span className="w-6 shrink-0 text-center">{medal(r.rank)}</span>
-                  <span className="min-w-0">
-                    <span
-                      className={`block truncate ${
-                        isMe
-                          ? "font-heading font-bold text-brand-blue-700"
-                          : "text-[var(--text)]"
-                      }`}
-                    >
-                      {r.name}
-                      {isMe && " (you)"}
-                      {r.streak >= 2 && (
-                        <span
-                          className="ml-1.5 text-xs text-brand-orange-600"
-                          title={`${r.streak}-day streak`}
-                        >
-                          🔥{r.streak}
-                        </span>
-                      )}
+        <div className="overflow-hidden rounded-lg border border-[var(--border)]">
+          <div className="flex items-center gap-3 border-b border-[var(--border)] bg-[var(--surface-muted)]/60 px-3 py-1.5 font-heading text-[10px] font-bold uppercase tracking-wide text-[var(--text-muted)]">
+            <span className="min-w-0 flex-1">Player</span>
+            <span className="w-16 shrink-0 text-center">Today</span>
+            <span className="w-8 shrink-0 text-right">Pts</span>
+          </div>
+          <ol className="divide-y divide-[var(--border)]">
+            {rows.map((r) => {
+              const isMe = r.userId === meId;
+              return (
+                <li
+                  key={r.userId}
+                  className={`flex items-center gap-3 px-3 py-2 text-sm ${
+                    isMe ? "bg-brand-blue-50" : ""
+                  }`}
+                >
+                  <span className="flex min-w-0 flex-1 items-center gap-2">
+                    <span className="w-6 shrink-0 text-center">
+                      {medal(r.rank)}
                     </span>
-                    <span className="block truncate text-xs text-[var(--text-muted)]">
-                      {r.detail}
+                    <span className="min-w-0">
+                      <span
+                        className={`block truncate ${
+                          isMe
+                            ? "font-heading font-bold text-brand-blue-700"
+                            : "text-[var(--text)]"
+                        }`}
+                      >
+                        {r.name}
+                        {isMe && " (you)"}
+                        {r.streak >= 2 && (
+                          <span
+                            className="ml-1.5 text-xs text-brand-orange-600"
+                            title={`${r.streak}-day streak`}
+                          >
+                            🔥{r.streak}
+                          </span>
+                        )}
+                      </span>
+                      <span className="block truncate text-xs text-[var(--text-muted)]">
+                        {r.detail}
+                      </span>
                     </span>
                   </span>
-                </span>
-                <span className="shrink-0 font-heading font-bold tabular-nums text-[var(--text)]">
-                  {r.points}
-                </span>
-              </li>
-            );
-          })}
-        </ol>
+
+                  <span className="flex w-16 shrink-0 justify-center">
+                    <TodayPath
+                      path={r.todayPath}
+                      status={r.todayStatus}
+                      name={isMe ? "You" : r.name}
+                    />
+                  </span>
+
+                  <span className="w-8 shrink-0 text-right font-heading font-bold tabular-nums text-[var(--text)]">
+                    {r.points}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
       )}
 
       <p className="field-hint">{scoringSummary}</p>
@@ -546,4 +564,73 @@ function Leaderboard({
 
 function medal(rank: number): string {
   return rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : String(rank);
+}
+
+/** Tile colours for the tiny leaderboard path (same palette as the board). */
+const DOT_CLASS: Record<Tile, string> = {
+  green: "bg-emerald-600",
+  yellow: "bg-brand-yellow-400",
+  grey: "bg-brand-blue-300",
+};
+
+/**
+ * One player's colour path for today, as a miniature of the board.
+ *
+ * Colours only — the server never sends the words behind them, so this reveals
+ * how someone got there without giving the answer away.
+ */
+function TodayPath({
+  path,
+  status,
+  name,
+}: {
+  path: Tile[][] | null;
+  status: WordLeaderRow["todayStatus"];
+  name: string;
+}) {
+  if (!path || path.length === 0) {
+    const label =
+      status === "playing"
+        ? "playing…"
+        : status === "failed"
+          ? "—"
+          : "—";
+    return (
+      <span
+        className="text-[10px] text-[var(--text-muted)]"
+        title={
+          status === "playing"
+            ? `${name} is still playing — the path shows once they finish.`
+            : `${name} hasn’t played today.`
+        }
+      >
+        {label}
+      </span>
+    );
+  }
+
+  const label =
+    status === "solved"
+      ? `${name} solved it in ${path.length} of ${MAX_GUESSES}`
+      : `${name} didn’t solve it — used all ${MAX_GUESSES} guesses`;
+
+  return (
+    <span
+      className="inline-grid gap-[2px]"
+      title={label}
+      aria-label={label}
+      role="img"
+    >
+      {path.map((row, i) => (
+        <span key={i} className="flex gap-[2px]">
+          {row.map((tile, j) => (
+            <span
+              key={j}
+              className={`h-[6px] w-[6px] rounded-[1px] ${DOT_CLASS[tile]}`}
+            />
+          ))}
+        </span>
+      ))}
+    </span>
+  );
 }

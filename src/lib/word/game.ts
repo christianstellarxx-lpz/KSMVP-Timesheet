@@ -48,6 +48,19 @@ export interface WordLeaderRow {
   points: number;
   detail: string;
   streak: number;
+  /**
+   * Today's colour path — one row of tiles per guess this player made.
+   *
+   * Colours ONLY. The words they guessed are deliberately never included, so
+   * this is the same spoiler-free artifact as the shareable emoji grid: it
+   * shows *how* someone solved it without revealing the answer.
+   *
+   * Null until that player's own attempt is finished, so a live game can't be
+   * watched tile by tile.
+   */
+  todayPath: Tile[][] | null;
+  /** Their state on today's puzzle, for the label beside the path. */
+  todayStatus: "solved" | "failed" | "playing" | "none";
 }
 
 export interface WordGameState {
@@ -165,15 +178,62 @@ async function streakFor(vaId: string, today: EtDateString): Promise<number> {
   return currentStreak(today, solved, played, WORD_EPOCH_DATE);
 }
 
-function toLeaderRows(rows: MonthlyLeaderRow[]): WordLeaderRow[] {
-  return rows.slice(0, LEADERBOARD_SIZE).map((r) => ({
-    rank: r.rank,
-    userId: r.userId,
-    name: r.name,
-    points: r.points,
-    detail: r.detail,
-    streak: r.streak ?? 0,
-  }));
+/** What everyone did on today's puzzle, keyed by player. */
+interface TodayRun {
+  path: Tile[][];
+  status: WordLeaderRow["todayStatus"];
+}
+
+/**
+ * Load today's colour paths for every player.
+ *
+ * Note the `select`: `guesses` is read only to count how many were made — the
+ * words themselves never leave this function, so no caller can leak them into a
+ * DTO. Only `guessPatterns` (the colours) is passed on.
+ */
+async function todayRuns(puzzleId: string): Promise<Map<string, TodayRun>> {
+  const rows = await prisma.wordEntry.findMany({
+    where: { puzzleId },
+    select: {
+      vaId: true,
+      solved: true,
+      guesses: true,
+      guessPatterns: true,
+      completedAt: true,
+    },
+  });
+
+  const out = new Map<string, TodayRun>();
+  for (const row of rows) {
+    const made = toStringArray(row.guesses).length;
+    if (made === 0) continue;
+    const finished = row.solved || row.completedAt != null;
+    out.set(row.vaId, {
+      // Hold the path back until they're done — nobody watches a live game.
+      path: finished ? toPatterns(row.guessPatterns) : [],
+      status: finished ? (row.solved ? "solved" : "failed") : "playing",
+    });
+  }
+  return out;
+}
+
+function toLeaderRows(
+  rows: MonthlyLeaderRow[],
+  runs: Map<string, TodayRun>,
+): WordLeaderRow[] {
+  return rows.slice(0, LEADERBOARD_SIZE).map((r) => {
+    const run = runs.get(r.userId);
+    return {
+      rank: r.rank,
+      userId: r.userId,
+      name: r.name,
+      points: r.points,
+      detail: r.detail,
+      streak: r.streak ?? 0,
+      todayPath: run && run.path.length > 0 ? run.path : null,
+      todayStatus: run?.status ?? "none",
+    };
+  });
 }
 
 /** Everything the Word Guess panel needs. Never includes an unfinished answer. */
@@ -183,13 +243,14 @@ export async function getWordGameState(vaId: string): Promise<WordGameState> {
 
   const puzzle = await getOrCreatePuzzle(today);
 
-  const [clockedInToday, entry, streak, monthly] = await Promise.all([
+  const [clockedInToday, entry, streak, monthly, runs] = await Promise.all([
     isClockedInToday(vaId),
     prisma.wordEntry.findUnique({
       where: { vaId_puzzleId: { vaId, puzzleId: puzzle.id } },
     }),
     streakFor(vaId, today),
     resolveWordMonthly(monthKey),
+    todayRuns(puzzle.id),
   ]);
 
   const guesses = toStringArray(entry?.guesses);
@@ -215,7 +276,7 @@ export async function getWordGameState(vaId: string): Promise<WordGameState> {
     streak,
     monthLabel: monthLabel(monthKey),
     monthPoints: monthly.find((r) => r.userId === vaId)?.points ?? 0,
-    leaderboard: toLeaderRows(monthly),
+    leaderboard: toLeaderRows(monthly, runs),
     scoringSummary: WORD_SCORING_SUMMARY,
   };
 }
