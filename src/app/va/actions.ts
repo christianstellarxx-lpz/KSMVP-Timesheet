@@ -121,13 +121,17 @@ export async function logPtoAction(
 
 /**
  * Mark the VA's received comments as read — backs the "Done" button on the
- * admin-feedback box. Scoped to the caller's own comments by `markCommentsReadForVa`.
- * Intentionally does NOT revalidate: the button clears the notification
- * optimistically, and a full dashboard refetch would just make it flicker.
+ * admin-feedback box. Scoped to the caller's own comments by
+ * `markCommentsReadForVa`.
+ *
+ * Revalidates so the dismissal is authoritative rather than only local: once
+ * these are read, `getVaDayState` no longer returns them and the panel stays
+ * gone across refreshes (and in any other tab the VA has open).
  */
 export async function acknowledgeCommentsAction(): Promise<void> {
   const session = await requireVA();
   await markCommentsReadForVa(session.userId);
+  revalidatePath("/va");
 }
 
 /** Record the VA's daily Flappy Bird score (one play per day, after clock-in). */

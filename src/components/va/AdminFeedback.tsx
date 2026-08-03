@@ -11,21 +11,27 @@ export function AdminFeedback({
   feedback: FeedbackEntryDTO[];
   unreadCommentCount: number;
 }) {
-  // The notification is cleared by the VA, not by merely rendering the box, so
-  // feedback can't be dismissed by a page load they never looked at.
-  const [acknowledged, setAcknowledged] = useState(false);
+  // This panel only ever renders when there is UNREAD feedback — getVaDayState
+  // filters to it — so the box is a notification, not a history view.
+  //
+  // "Done" marks the comments read, which is what makes the dismissal stick:
+  // the next load finds nothing unread and the panel stays gone until an admin
+  // writes something new. `dismissed` just hides it instantly so the VA doesn't
+  // wait on the round trip. Nothing is deleted.
   const [busy, setBusy] = useState(false);
-  // "Done" marks the comments read and puts the box away for this visit. Past
-  // feedback is never deleted — it's back (without the "new" highlighting) on
-  // the next dashboard load, so nothing an admin wrote is ever lost.
   const [dismissed, setDismissed] = useState(false);
+  const [error, setError] = useState("");
 
   const markDone = async () => {
     setBusy(true);
+    setError("");
     try {
       await acknowledgeCommentsAction();
-      setAcknowledged(true);
       setDismissed(true);
+    } catch {
+      // Keep the panel up — a silent failure would look dismissed but come
+      // straight back on refresh, which is the bug this button had.
+      setError("Couldn’t clear that — please try again.");
     } finally {
       setBusy(false);
     }
@@ -33,8 +39,7 @@ export function AdminFeedback({
 
   if (feedback.length === 0 || dismissed) return null;
 
-  const hasNew = unreadCommentCount > 0 && !acknowledged;
-  const noteCount = feedback.reduce((n, f) => n + f.comments.length, 0);
+  const hasNew = unreadCommentCount > 0;
 
   return (
     <section
@@ -61,16 +66,15 @@ export function AdminFeedback({
             <h2 className="font-heading text-base font-bold text-brand-blue-700">
               Feedback from your admin
             </h2>
-            <p className="text-xs font-medium text-[var(--text-muted)]">
-              {hasNew ? (
-                <span className="text-brand-blue-700">
-                  You have {unreadCommentCount} new comment
-                  {unreadCommentCount > 1 ? "s" : ""}.
-                </span>
-              ) : (
-                `${noteCount} note${noteCount === 1 ? "" : "s"} from your admin.`
-              )}
+            <p className="text-xs font-medium text-brand-blue-700">
+              You have {unreadCommentCount} new comment
+              {unreadCommentCount === 1 ? "" : "s"}.
             </p>
+            {error && (
+              <p className="mt-0.5 text-xs font-semibold text-brand-orange-700">
+                {error}
+              </p>
+            )}
           </div>
         </div>
 
@@ -80,7 +84,7 @@ export function AdminFeedback({
               {unreadCommentCount} new
             </span>
           )}
-          {/* Always available — clears any "new" flag and puts the box away. */}
+          {/* Marks the feedback read — that is what keeps it from coming back. */}
           <button
             type="button"
             onClick={markDone}
@@ -103,13 +107,13 @@ export function AdminFeedback({
                 <li
                   key={c.id}
                   className={`rounded-lg border px-3 py-2.5 ${
-                    c.unread && !acknowledged
+                    c.unread
                       ? "border-brand-blue-200 bg-brand-blue-50/60"
                       : "border-[var(--border)] bg-[var(--surface-muted)]/50"
                   }`}
                 >
                   <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-                    {c.unread && !acknowledged && (
+                    {c.unread && (
                       <span className="chip bg-brand-orange-500 text-white">
                         New
                       </span>

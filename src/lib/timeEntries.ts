@@ -181,8 +181,14 @@ export async function getVaDayState(vaId: string): Promise<VaDayState> {
       orderBy: { workDate: "desc" },
     }),
     prisma.timeEntry.findFirst({ where: { vaId, workDate: todayStorage } }),
+    // Only entries that still carry UNREAD feedback. This is what makes the
+    // dashboard's "Done" button stick: acknowledging sets `readAt` on every
+    // comment, so on the next load nothing matches here and the panel stays
+    // gone until an admin writes something new. The comments themselves are
+    // never deleted — the whole thread is still returned for context, and
+    // admins keep the full history on their own dashboard.
     prisma.timeEntry.findMany({
-      where: { vaId, comments: { some: {} } },
+      where: { vaId, comments: { some: { readAt: null } } },
       include: commentInclude,
       orderBy: { workDate: "desc" },
       take: 20,
