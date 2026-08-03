@@ -85,7 +85,7 @@ const config: Config = {
         },
         "tile-pop": {
           "0%": { transform: "scale(1)" },
-          50: { transform: "scale(1.08)" },
+          "50%": { transform: "scale(1.08)" },
           "100%": { transform: "scale(1)" },
         },
         "tile-shake": {
@@ -95,7 +95,7 @@ const config: Config = {
         },
         "tile-bounce": {
           "0%, 100%": { transform: "translateY(0)" },
-          40: { transform: "translateY(-10px)" },
+          "40%": { transform: "translateY(-10px)" },
         },
       },
       animation: {
