@@ -3,8 +3,14 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SignJWT, jwtVerify } from "jose";
 import { env } from "./env";
+import {
+  SESSION_COOKIE_NAME,
+  SESSION_COOKIE_PATH,
+  SESSION_VERSION,
+  isCurrentSessionVersion,
+} from "./sessionCookie";
 
-const COOKIE_NAME = "ksmvp_session";
+const COOKIE_NAME = SESSION_COOKIE_NAME;
 
 /**
  * Absolute cap on how long a signed token stays valid, enforced server-side by
@@ -98,6 +104,9 @@ function secretKey(): Uint8Array {
 
 async function signSession(user: SessionUser): Promise<string> {
   return new SignJWT({
+    // `v` lets a future change retire every existing session automatically —
+    // see SESSION_VERSION.
+    v: SESSION_VERSION,
     role: user.role,
     name: user.name,
     email: user.email,
@@ -129,7 +138,7 @@ export async function createSession(user: SessionUser): Promise<void> {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
-    path: "/",
+    path: SESSION_COOKIE_PATH,
   });
 }
 
@@ -149,6 +158,11 @@ export async function getSession(): Promise<SessionUser | null> {
     const { payload } = await jwtVerify(token, secretKey(), {
       algorithms: ["HS256"],
     });
+    // A token from an older session format is treated as no session at all.
+    // We can't clear the cookie from here (renders may not mutate cookies), but
+    // the guard's redirect to /login goes through the middleware, which does.
+    if (!isCurrentSessionVersion(payload.v)) return null;
+
     const role = payload.role as Role | undefined;
     if (!payload.sub || !role || !ROLES.includes(role)) return null;
     return {
