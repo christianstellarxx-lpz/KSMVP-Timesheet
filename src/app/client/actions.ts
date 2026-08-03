@@ -51,10 +51,9 @@ export async function addCommentAction(
   return { ok: true };
 }
 
-/** Delete a VA's time entry — top-level admins only. */
+/** Delete a VA's time entry — any admin-dashboard user (ADMIN or VA_ADMIN). */
 export async function deleteEntryAction(formData: FormData): Promise<void> {
-  const session = await requireAdmin();
-  if (!isFullAdmin(session.role)) return;
+  await requireAdmin();
 
   const entryId = String(formData.get("entryId") ?? "");
   if (!entryId) return;

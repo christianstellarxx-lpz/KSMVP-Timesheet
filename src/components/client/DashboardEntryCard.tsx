@@ -8,15 +8,19 @@ import { deleteEntryAction, removeUrgentAction } from "@/app/client/actions";
 
 export function DashboardEntryCard({
   entry,
-  canDelete,
+  canDeleteEntry,
+  canDeleteComment,
   viewerId,
 }: {
   entry: DashboardEntry;
-  canDelete: boolean;
+  /** Delete the whole time entry — any admin (ADMIN or VA_ADMIN). */
+  canDeleteEntry: boolean;
+  /** Delete one's own comment — top-level admins only. */
+  canDeleteComment: boolean;
   viewerId: string;
 }) {
   if (entry.entryType === "PTO")
-    return <PtoRow entry={entry} canDelete={canDelete} />;
+    return <PtoRow entry={entry} canDelete={canDeleteEntry} />;
 
   const urgent = entry.hasUrgent;
   return (
@@ -57,7 +61,7 @@ export function DashboardEntryCard({
           )}
           <PunctualityChips chips={entry.chips} />
           <StatusBadge status={entry.status} />
-          {canDelete && (
+          {canDeleteEntry && (
             <DeleteButton
               action={deleteEntryAction}
               fields={{ entryId: entry.id }}
@@ -125,7 +129,7 @@ export function DashboardEntryCard({
           entryId={entry.id}
           comments={entry.comments}
           vaName={entry.vaName}
-          canDelete={canDelete}
+          canDelete={canDeleteComment}
           viewerId={viewerId}
         />
       </div>

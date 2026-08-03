@@ -1,5 +1,10 @@
 import Link from "next/link";
-import { requireAdmin, isDailyReporter, isFullAdmin } from "@/lib/session";
+import {
+  requireAdmin,
+  isDailyReporter,
+  isFullAdmin,
+  canViewAdmin,
+} from "@/lib/session";
 import { getDashboardData, parseFilters } from "@/lib/dashboard";
 import { formatEtDateLong } from "@/lib/time";
 import { getTodayRollCall } from "@/lib/rollcall";
@@ -21,7 +26,10 @@ export default async function ClientDashboardPage({
   const session = await requireAdmin();
   const filters = parseFilters(await searchParams);
   const data = await getDashboardData(filters);
-  const canDelete = isFullAdmin(session.role);
+  // Any admin-dashboard user (ADMIN or VA_ADMIN, e.g. Kristine) can delete a
+  // VA's time entry; deleting one's own comments stays top-level-admin only.
+  const canDeleteEntry = canViewAdmin(session.role);
+  const canDeleteComment = isFullAdmin(session.role);
 
   // The daily reporter gets a unique roll-call panel at the top.
   const reporter = isDailyReporter(session.email);
@@ -114,7 +122,8 @@ export default async function ClientDashboardPage({
                 <DashboardEntryCard
                   key={entry.id}
                   entry={entry}
-                  canDelete={canDelete}
+                  canDeleteEntry={canDeleteEntry}
+                  canDeleteComment={canDeleteComment}
                   viewerId={session.userId}
                 />
               ))}
