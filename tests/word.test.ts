@@ -14,6 +14,7 @@ import {
   currentStreak,
   emojiGrid,
   evaluateGuess,
+  isAttemptComplete,
   isWorkday,
   keyboardStates,
   monthBounds,
@@ -276,6 +277,56 @@ describe("checkPlayEligibility — the two hard rules", () => {
       expect(gate.canPlay).toBe(false);
       expect(gate.message).toBeTruthy();
     }
+  });
+});
+
+describe("isAttemptComplete — when a player's path may be shown to the team", () => {
+  it("reveals a solved run", () => {
+    expect(
+      isAttemptComplete({ solved: true, completed: true, guessesUsed: 3 }),
+    ).toBe(true);
+  });
+
+  it("reveals a run that used all six tries without solving", () => {
+    expect(
+      isAttemptComplete({
+        solved: false,
+        completed: true,
+        guessesUsed: MAX_GUESSES,
+      }),
+    ).toBe(true);
+  });
+
+  it("hides a run still in progress at every guess count 1–5", () => {
+    for (let used = 1; used < MAX_GUESSES; used++) {
+      expect(
+        isAttemptComplete({ solved: false, completed: false, guessesUsed: used }),
+      ).toBe(false);
+    }
+  });
+
+  it("hides a run that has not started", () => {
+    expect(
+      isAttemptComplete({ solved: false, completed: false, guessesUsed: 0 }),
+    ).toBe(false);
+  });
+
+  it("still reveals six spent tries if finalization was missed", () => {
+    // Defence in depth: a row that never got completedAt set must not be
+    // treated as live once the tries are gone.
+    expect(
+      isAttemptComplete({
+        solved: false,
+        completed: false,
+        guessesUsed: MAX_GUESSES,
+      }),
+    ).toBe(true);
+  });
+
+  it("never reveals a partial run just because it was abandoned", () => {
+    expect(
+      isAttemptComplete({ solved: false, completed: false, guessesUsed: 4 }),
+    ).toBe(false);
   });
 });
 

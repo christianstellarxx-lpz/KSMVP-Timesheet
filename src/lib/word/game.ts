@@ -26,6 +26,7 @@ import {
   emojiGrid,
   etCurrentMonthKey,
   evaluateGuess,
+  isAttemptComplete,
   monthLabel,
   type Tile,
 } from "./logic";
@@ -207,7 +208,12 @@ async function todayRuns(puzzleId: string): Promise<Map<string, TodayRun>> {
   for (const row of rows) {
     const made = toStringArray(row.guesses).length;
     if (made === 0) continue;
-    const finished = row.solved || row.completedAt != null;
+    // Only a finished run is ever revealed: solved, or all six tries spent.
+    const finished = isAttemptComplete({
+      solved: row.solved,
+      completed: row.completedAt != null,
+      guessesUsed: made,
+    });
     out.set(row.vaId, {
       // Hold the path back until they're done — nobody watches a live game.
       path: finished ? toPatterns(row.guessPatterns) : [],

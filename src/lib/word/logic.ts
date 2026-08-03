@@ -192,6 +192,23 @@ export function checkPlayEligibility(input: {
   };
 }
 
+/**
+ * Is a player's attempt over — solved, or all six tries spent?
+ *
+ * This is the gate for revealing someone's colour path to the rest of the team
+ * on the leaderboard: a run in progress is never shown, so nobody can watch a
+ * teammate's board fill in tile by tile. `completed` is the stored
+ * `completedAt` flag; the guess count is checked too so a row that somehow
+ * missed finalization still can't leak a live game.
+ */
+export function isAttemptComplete(input: {
+  solved: boolean;
+  completed: boolean;
+  guessesUsed: number;
+}): boolean {
+  return input.solved || input.completed || input.guessesUsed >= MAX_GUESSES;
+}
+
 // ---------------------------------------------------------------------------
 // Brag mechanic — spoiler-free emoji grid
 // ---------------------------------------------------------------------------
