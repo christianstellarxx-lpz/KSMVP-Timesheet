@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useState } from "react";
 import { acknowledgeCommentsAction } from "@/app/va/actions";
 import type { FeedbackEntryDTO } from "@/lib/timeEntries";
 
@@ -11,17 +11,30 @@ export function AdminFeedback({
   feedback: FeedbackEntryDTO[];
   unreadCommentCount: number;
 }) {
-  // Once the feedback is on screen, quietly mark it read so the notification
-  // clears on the VA's next visit. The current view keeps its "New" highlights.
-  useEffect(() => {
-    if (unreadCommentCount > 0) {
-      void acknowledgeCommentsAction();
+  // The notification is cleared by the VA, not by merely rendering the box, so
+  // feedback can't be dismissed by a page load they never looked at.
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [busy, setBusy] = useState(false);
+  // "Done" marks the comments read and puts the box away for this visit. Past
+  // feedback is never deleted — it's back (without the "new" highlighting) on
+  // the next dashboard load, so nothing an admin wrote is ever lost.
+  const [dismissed, setDismissed] = useState(false);
+
+  const markDone = async () => {
+    setBusy(true);
+    try {
+      await acknowledgeCommentsAction();
+      setAcknowledged(true);
+      setDismissed(true);
+    } finally {
+      setBusy(false);
     }
-  }, [unreadCommentCount]);
+  };
 
-  if (feedback.length === 0) return null;
+  if (feedback.length === 0 || dismissed) return null;
 
-  const hasNew = unreadCommentCount > 0;
+  const hasNew = unreadCommentCount > 0 && !acknowledged;
+  const noteCount = feedback.reduce((n, f) => n + f.comments.length, 0);
 
   return (
     <section
@@ -48,19 +61,35 @@ export function AdminFeedback({
             <h2 className="font-heading text-base font-bold text-brand-blue-700">
               Feedback from your admin
             </h2>
-            {hasNew && (
-              <p className="text-xs font-medium text-brand-blue-700">
-                You have {unreadCommentCount} new comment
-                {unreadCommentCount > 1 ? "s" : ""}.
-              </p>
-            )}
+            <p className="text-xs font-medium text-[var(--text-muted)]">
+              {hasNew ? (
+                <span className="text-brand-blue-700">
+                  You have {unreadCommentCount} new comment
+                  {unreadCommentCount > 1 ? "s" : ""}.
+                </span>
+              ) : (
+                `${noteCount} note${noteCount === 1 ? "" : "s"} from your admin.`
+              )}
+            </p>
           </div>
         </div>
-        {hasNew && (
-          <span className="chip bg-brand-orange-500 text-white">
-            {unreadCommentCount} new
-          </span>
-        )}
+
+        <div className="flex items-center gap-2">
+          {hasNew && (
+            <span className="chip bg-brand-orange-500 text-white">
+              {unreadCommentCount} new
+            </span>
+          )}
+          {/* Always available — clears any "new" flag and puts the box away. */}
+          <button
+            type="button"
+            onClick={markDone}
+            disabled={busy}
+            className="btn-primary min-h-[36px] px-4 text-xs"
+          >
+            {busy ? "Clearing…" : "Done"}
+          </button>
+        </div>
       </header>
 
       <div className="divide-y divide-[var(--border)]">
@@ -74,13 +103,13 @@ export function AdminFeedback({
                 <li
                   key={c.id}
                   className={`rounded-lg border px-3 py-2.5 ${
-                    c.unread
+                    c.unread && !acknowledged
                       ? "border-brand-blue-200 bg-brand-blue-50/60"
                       : "border-[var(--border)] bg-[var(--surface-muted)]/50"
                   }`}
                 >
                   <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-                    {c.unread && (
+                    {c.unread && !acknowledged && (
                       <span className="chip bg-brand-orange-500 text-white">
                         New
                       </span>

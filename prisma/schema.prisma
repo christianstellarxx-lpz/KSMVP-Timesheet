@@ -48,6 +48,9 @@ model User {
   // Daily Flappy Bird scores (VA dashboard game).
   gameScores GameScore[] @relation("GameScores")
 
+  // Daily Word Guess attempts (one per puzzle day).
+  wordEntries WordEntry[] @relation("WordEntries")
+
   // Sales-desk notices this user sent (Sales Producer) / received (team channel).
   sentNotices     Notice[] @relation("NoticeSender")
   receivedNotices Notice[] @relation("NoticeRecipient")
@@ -134,6 +137,70 @@ model GameScore {
 
   @@unique([userId, playDate])
   @@index([score])
+}
+
+// ---------------------------------------------------------------------------
+// Daily Word Guess (monthly rotating game #2) — see src/lib/word/
+// ---------------------------------------------------------------------------
+
+// One puzzle per ET calendar day, shared by everyone. The answer is chosen
+// deterministically from the curated list (date-seeded, see src/lib/word/logic.ts)
+// and materialized here on the first request of the day, so every user provably
+// reads the identical word even if the list is later edited.
+//
+// `answer` lives server-side only — it is never included in any DTO sent to the
+// client until that user's own attempt is finished.
+model WordPuzzle {
+  id String @id @default(cuid())
+
+  // The ET calendar day this puzzle is for (stored at UTC-midnight, like
+  // TimeEntry.workDate / GameScore.playDate).
+  date   DateTime @unique
+  answer String // the 5-letter secret, lowercase
+
+  // Phase 4 (multi-tenant) prep: nullable today, single-tenant in practice.
+  organizationId String?
+
+  createdAt DateTime @default(now())
+
+  entries WordEntry[]
+
+  @@index([organizationId])
+}
+
+// One VA's single attempt at one puzzle. The unique (vaId, puzzleId) constraint
+// is what enforces "one attempt per VA per day" — the same shape as GameScore's
+// (userId, playDate).
+model WordEntry {
+  id       String     @id @default(cuid())
+  vaId     String
+  va       User       @relation("WordEntries", fields: [vaId], references: [id], onDelete: Cascade)
+  puzzleId String
+  puzzle   WordPuzzle @relation(fields: [puzzleId], references: [id], onDelete: Cascade)
+
+  // JSON arrays, appended one entry per submitted guess and always the same
+  // length: guesses = ["crane", …]; guessPatterns = [["grey","yellow", …], …].
+  guesses       Json @default("[]")
+  guessPatterns Json @default("[]")
+
+  solved     Boolean @default(false)
+  // 1–6 when solved, 0 when the attempt ended without a solve. While the
+  // attempt is still in progress this tracks guesses used so far.
+  guessCount Int     @default(0)
+
+  // Set when the attempt is finalized (solved, or the 6th guess was used).
+  completedAt DateTime?
+
+  // Phase 4 (multi-tenant) prep: nullable today, single-tenant in practice.
+  organizationId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([vaId, puzzleId])
+  @@index([vaId])
+  @@index([puzzleId])
+  @@index([organizationId])
 }
 
 // A message the Sales Producer sends to a fixed team channel from the Sales

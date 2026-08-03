@@ -138,6 +138,11 @@ export function formatEtDateLong(date: EtDateString): string {
   return DateTime.fromISO(date, { zone: ET_ZONE }).toFormat("ccc, LLL d, yyyy");
 }
 
+/** "Jul 7" — a compact ET date, e.g. for the shareable game result. */
+export function formatEtDateShort(date: EtDateString): string {
+  return DateTime.fromISO(date, { zone: ET_ZONE }).toFormat("LLL d");
+}
+
 /** "Jul 7, 3:24 PM" — a compact ET timestamp for comments. */
 export function formatEtDateTime(instant: Date): string {
   return DateTime.fromJSDate(instant).setZone(ET_ZONE).toFormat("LLL d, h:mm a");

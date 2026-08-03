@@ -112,6 +112,19 @@ export const salesNoticeSchema = z.object({
 });
 export type SalesNoticeInput = z.infer<typeof salesNoticeSchema>;
 
+/**
+ * One Daily Word Guess submission. Shape only — membership in the allowed word
+ * list is checked server-side (src/lib/word/lists.ts), since that list never
+ * ships to the client.
+ */
+export const wordGuessSchema = z.object({
+  guess: z
+    .string()
+    .transform((s) => s.trim().toLowerCase())
+    .pipe(z.string().regex(/^[a-z]{5}$/, "Enter a 5-letter word.")),
+});
+export type WordGuessInput = z.infer<typeof wordGuessSchema>;
+
 export const addMemberSchema = z.object({
   name: requiredText("Name", 120),
   email: z.string().trim().min(1, "Email is required.").email("Enter a valid email."),

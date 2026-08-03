@@ -10,13 +10,18 @@ export default async function VaLayout({
 }) {
   const session = await requireVA();
 
-  // VA Admins get tabs to switch between the two dashboards (VA dashboard first).
+  // Everyone with a VA dashboard gets the Games tab; VA Admins additionally get
+  // a tab to switch over to the admin dashboard (VA dashboard first).
   const navItems: NavItem[] = canViewAdmin(session.role)
     ? [
         { href: "/va", label: "My VA Dashboard" },
+        { href: "/va/games", label: "Games" },
         { href: "/client", label: "Admin Dashboard" },
       ]
-    : [];
+    : [
+        { href: "/va", label: "My Day" },
+        { href: "/va/games", label: "Games" },
+      ];
 
   return (
     <div className="flex min-h-screen flex-col">

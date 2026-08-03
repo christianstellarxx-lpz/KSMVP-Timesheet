@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import type { VaDayState, EntryDTO } from "@/lib/timeEntries";
-import type { GameState } from "@/lib/game";
 import type { NoticeDTO } from "@/lib/notices";
 import { NoticeInbox } from "@/components/NoticeInbox";
 import { UrgentBanner } from "@/components/UrgentBanner";
@@ -13,22 +13,17 @@ import { TimeOutModal } from "./TimeOutModal";
 import { ResolveStaleModal } from "./ResolveStaleModal";
 import { PtoModal } from "./PtoModal";
 import { AdminFeedback } from "./AdminFeedback";
-import { FlappyGame } from "./FlappyGame";
 import { EditableTask } from "./EditableTask";
 import { presetWallClock, SCHEDULE, SCHEDULE_SHIFT_LABEL } from "@/lib/time";
 
 export function VaDayClient({
   firstName,
   state,
-  game,
-  meId,
   notices,
   dismissNoticeAction,
 }: {
   firstName: string;
   state: VaDayState;
-  game: GameState;
-  meId: string;
   notices: NoticeDTO[];
   dismissNoticeAction: (formData: FormData) => void | Promise<void>;
 }) {
@@ -166,14 +161,46 @@ export function VaDayClient({
         </button>
       </div>
 
-      {/* Daily Flappy Bird game — unlocks once clocked in, one play a day.
-          The key remounts it when clock-in / played status changes (e.g. right
-          after Time In) so it re-reads the fresh availability from the server. */}
-      <FlappyGame
-        key={`${game.clockedInToday}-${game.hasPlayedToday}`}
-        game={game}
-        meId={meId}
-      />
+      {/* This month's rotating game lives on the Games page, alongside the
+          Reigning Champion spotlight and the monthly leaderboard. */}
+      <Link
+        href="/va/games"
+        className="card flex items-center gap-3 px-4 py-3 transition-shadow hover:shadow-card-hover sm:px-5"
+      >
+        <span className="text-2xl" aria-hidden>
+          🔤
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-heading text-sm font-bold text-brand-blue-700">
+            Daily Word Guess — this month’s game
+          </span>
+          <span className="block text-xs text-[var(--text-muted)]">
+            One shared 5-letter word, six guesses. See the leaderboard &amp;
+            reigning champion.
+          </span>
+        </span>
+        <svg
+          className="h-5 w-5 shrink-0 text-brand-orange-500"
+          viewBox="0 0 24 24"
+          fill="none"
+          aria-hidden
+        >
+          <path
+            d="m9 18 6-6-6-6"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </Link>
+
+      {/* Daily Flappy is hidden — the rotating game on /va/games is the one in
+          play. The component (components/va/FlappyGame.tsx), its lib
+          (lib/game.ts) and its GameScore rows are all still here: the monthly
+          Flappy resolver keeps powering the Reigning Champion box for months
+          when Flappy was the rotating game. To bring it back, re-fetch
+          getGameState in app/va/page.tsx and render <FlappyGame> here. */}
 
       {/* Modals — mounted only while open so their form/action state resets. */}
       {modal === "in" && (

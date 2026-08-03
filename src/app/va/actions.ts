@@ -120,10 +120,10 @@ export async function logPtoAction(
 }
 
 /**
- * Mark the VA's received comments as read. Called from the dashboard once the
- * feedback has been shown, so the "new comment" notification clears on their
- * next visit. Intentionally does NOT revalidate — the current view keeps its
- * "New" highlighting for this visit.
+ * Mark the VA's received comments as read — backs the "Done" button on the
+ * admin-feedback box. Scoped to the caller's own comments by `markCommentsReadForVa`.
+ * Intentionally does NOT revalidate: the button clears the notification
+ * optimistically, and a full dashboard refetch would just make it flicker.
  */
 export async function acknowledgeCommentsAction(): Promise<void> {
   const session = await requireVA();

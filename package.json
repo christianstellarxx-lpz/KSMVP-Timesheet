@@ -17,6 +17,7 @@
     "db:reset": "prisma migrate reset --force",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
+    "word:schedule": "tsx scripts/word-schedule.ts",
     "setup": "prisma generate && prisma migrate deploy && prisma db seed"
   },
   "prisma": {

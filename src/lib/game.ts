@@ -55,8 +55,14 @@ async function getLeaderboard(): Promise<LeaderRow[]> {
   }));
 }
 
-/** Whether the user has a WORK time-in for today (i.e. they clocked in). */
-async function isClockedInToday(userId: string): Promise<boolean> {
+/**
+ * Whether the user has a WORK time-in for today (i.e. they clocked in).
+ *
+ * This is the shared daily-attempt gate for every dashboard game — the Word
+ * Guess game imports it too, so "one try a day, after Time In" is defined in
+ * exactly one place.
+ */
+export async function isClockedInToday(userId: string): Promise<boolean> {
   const todayStorage = etDateStringToStorageDate(etToday());
   const entry = await prisma.timeEntry.findFirst({
     where: { vaId: userId, workDate: todayStorage },

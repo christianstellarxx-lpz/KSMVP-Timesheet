@@ -78,10 +78,33 @@ const config: Config = {
           from: { opacity: "0", transform: "translateY(8px) scale(0.98)" },
           to: { opacity: "1", transform: "translateY(0) scale(1)" },
         },
+        // Daily Word Guess — tile reveal, typing feedback, win/invalid cues.
+        "tile-reveal": {
+          from: { transform: "rotateX(-90deg)", opacity: "0.35" },
+          to: { transform: "rotateX(0deg)", opacity: "1" },
+        },
+        "tile-pop": {
+          "0%": { transform: "scale(1)" },
+          50: { transform: "scale(1.08)" },
+          "100%": { transform: "scale(1)" },
+        },
+        "tile-shake": {
+          "0%, 100%": { transform: "translateX(0)" },
+          "20%, 60%": { transform: "translateX(-6px)" },
+          "40%, 80%": { transform: "translateX(6px)" },
+        },
+        "tile-bounce": {
+          "0%, 100%": { transform: "translateY(0)" },
+          40: { transform: "translateY(-10px)" },
+        },
       },
       animation: {
         "fade-in": "fade-in 150ms ease-out",
         "scale-in": "scale-in 180ms cubic-bezier(0.16, 1, 0.3, 1)",
+        "tile-reveal": "tile-reveal 300ms ease-out both",
+        "tile-pop": "tile-pop 120ms ease-out",
+        "tile-shake": "tile-shake 420ms ease-in-out",
+        "tile-bounce": "tile-bounce 520ms ease-in-out both",
       },
     },
   },

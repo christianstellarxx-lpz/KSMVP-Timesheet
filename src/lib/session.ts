@@ -5,7 +5,15 @@ import { SignJWT, jwtVerify } from "jose";
 import { env } from "./env";
 
 const COOKIE_NAME = "ksmvp_session";
-const MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 days
+
+/**
+ * Absolute cap on how long a signed token stays valid, enforced server-side by
+ * `jwtVerify`. This is NOT how long a login lasts in practice — the cookie is a
+ * browser *session cookie* (see createSession), so closing the browser ends the
+ * session well before this. This is only the backstop for a browser that is
+ * left open for days.
+ */
+const TOKEN_MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 days
 
 /**
  * Roles & capabilities:
@@ -98,11 +106,22 @@ async function signSession(user: SessionUser): Promise<string> {
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(user.userId)
     .setIssuedAt()
-    .setExpirationTime(`${MAX_AGE_SECONDS}s`)
+    .setExpirationTime(`${TOKEN_MAX_AGE_SECONDS}s`)
     .sign(secretKey());
 }
 
-/** Create the session cookie after a successful login. */
+/**
+ * Create the session cookie after a successful login.
+ *
+ * Deliberately a **session cookie**: no `maxAge` and no `expires`, so the
+ * browser holds it in memory only and discards it when the browser is closed —
+ * the next visit lands on /login. Do not add `maxAge`/`expires` here; that
+ * would write it to disk and keep people signed in across restarts.
+ *
+ * Caveat worth knowing: a browser configured to reopen its previous tabs
+ * ("Continue where you left off", or Android Chrome's default) can restore
+ * session cookies too. The signed token's own expiry is the backstop.
+ */
 export async function createSession(user: SessionUser): Promise<void> {
   const token = await signSession(user);
   const cookieStore = await cookies();
@@ -111,7 +130,6 @@ export async function createSession(user: SessionUser): Promise<void> {
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: MAX_AGE_SECONDS,
   });
 }
 
