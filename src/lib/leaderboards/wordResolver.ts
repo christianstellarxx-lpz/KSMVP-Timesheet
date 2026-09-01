@@ -15,8 +15,8 @@ import {
   monthBounds,
   streakBonus,
   workdaysBetween,
-  type MonthKey,
 } from "@/lib/word/logic";
+import type { MonthKey } from "./months";
 import type { GameResolver, MonthlyLeaderRow } from "./types";
 
 /**
@@ -190,6 +190,8 @@ export const wordResolver: GameResolver = {
   id: "WORD",
   name: "Daily Word Guess",
   scoreLabel: "TOP SCORE",
+  tagline: "One shared 5-letter word, six guesses. Solve it before the team does.",
+  icon: "🔤",
   resolveMonthly: resolveWordMonthly,
 };
 

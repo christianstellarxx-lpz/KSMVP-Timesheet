@@ -339,37 +339,17 @@ export function currentStreak(
 // Month helpers (leaderboards are monthly)
 // ---------------------------------------------------------------------------
 
-/** "2026-08" for an ET date (or for today, in ET). */
-export type MonthKey = string;
-
-export function monthKeyForDate(date: EtDateString): MonthKey {
-  return date.slice(0, 7);
-}
-
-export function etCurrentMonthKey(now: Date = new Date()): MonthKey {
-  return DateTime.fromJSDate(now).setZone(ET_ZONE).toFormat("yyyy-LL");
-}
-
-/** The calendar month before `monthKey`, e.g. "2026-08" -> "2026-07". */
-export function previousMonthKey(monthKey: MonthKey): MonthKey {
-  return DateTime.fromISO(`${monthKey}-01`, { zone: "utc" })
-    .minus({ months: 1 })
-    .toFormat("yyyy-LL");
-}
-
-/** First and last ET calendar day of a month, as date strings. */
-export function monthBounds(monthKey: MonthKey): {
-  start: EtDateString;
-  end: EtDateString;
-} {
-  const start = DateTime.fromISO(`${monthKey}-01`, { zone: "utc" }).startOf("day");
-  return {
-    start: start.toISODate()!,
-    end: start.endOf("month").toISODate()!,
-  };
-}
-
-/** "July 2026" — the label the Reigning Champion box shows. */
-export function monthLabel(monthKey: MonthKey): string {
-  return DateTime.fromISO(`${monthKey}-01`, { zone: "utc" }).toFormat("LLLL yyyy");
-}
+/**
+ * These moved to `src/lib/leaderboards/months.ts` — they are game-agnostic, and
+ * the active leaderboard harness should not have to import them out of a game
+ * module. Re-exported here so existing imports (and tests/word.test.ts) keep
+ * resolving against the same single implementation.
+ */
+export {
+  etCurrentMonthKey,
+  monthBounds,
+  monthKeyForDate,
+  monthLabel,
+  previousMonthKey,
+  type MonthKey,
+} from "@/lib/leaderboards/months";

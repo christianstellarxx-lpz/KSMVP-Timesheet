@@ -26,7 +26,9 @@ export default async function VaLayout({
   return (
     <div className="flex min-h-screen flex-col">
       <TopNav session={session} navItems={navItems} />
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8 sm:px-6">
+      {/* Wide shell, matching the admin dashboard. Each page picks its own
+          reading width inside it — My Day stays narrow, Games needs the room. */}
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
         {children}
       </main>
       <AppFooter />

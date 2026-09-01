@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { ActiveGamePromo } from "@/lib/leaderboards/registry";
 import Link from "next/link";
 import type { VaDayState, EntryDTO } from "@/lib/timeEntries";
 import type { NoticeDTO } from "@/lib/notices";
@@ -20,11 +21,14 @@ export function VaDayClient({
   firstName,
   state,
   notices,
+  game,
   dismissNoticeAction,
 }: {
   firstName: string;
   state: VaDayState;
   notices: NoticeDTO[];
+  /** This month's rotating game, resolved from GAME_ROTATION. */
+  game: ActiveGamePromo;
   dismissNoticeAction: (formData: FormData) => void | Promise<void>;
 }) {
   const active =
@@ -168,15 +172,14 @@ export function VaDayClient({
         className="card flex items-center gap-3 px-4 py-3 transition-shadow hover:shadow-card-hover sm:px-5"
       >
         <span className="text-2xl" aria-hidden>
-          🔤
+          {game.icon}
         </span>
         <span className="min-w-0 flex-1">
           <span className="block font-heading text-sm font-bold text-brand-blue-700">
-            Daily Word Guess — this month’s game
+            {game.name} — this month’s game
           </span>
           <span className="block text-xs text-[var(--text-muted)]">
-            One shared 5-letter word, six guesses. See the leaderboard &amp;
-            reigning champion.
+            {game.tagline} See the leaderboard &amp; reigning champion.
           </span>
         </span>
         <svg

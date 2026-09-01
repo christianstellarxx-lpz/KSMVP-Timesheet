@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { etDateStringToStorageDate } from "@/lib/time";
-import { monthBounds, type MonthKey } from "@/lib/word/logic";
+import { monthBounds, type MonthKey } from "./months";
 import type { GameResolver, MonthlyLeaderRow } from "./types";
 
 /**
@@ -63,5 +63,7 @@ export const flappyResolver: GameResolver = {
   id: "FLAPPY",
   name: "DailyFlappy",
   scoreLabel: "TOP SCORE",
+  tagline: "One flight a day. Dodge the pipes and set the month's best score.",
+  icon: "🐦",
   resolveMonthly: resolveFlappyMonthly,
 };

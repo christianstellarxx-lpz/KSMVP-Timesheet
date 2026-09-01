@@ -125,6 +125,29 @@ export const wordGuessSchema = z.object({
 });
 export type WordGuessInput = z.infer<typeof wordGuessSchema>;
 
+/**
+ * One Stretch Goal replay submission.
+ *
+ * Note what is NOT in this schema: a score. The endpoint does not accept one,
+ * so there is no field for a client to lie in — the server replays `holds`
+ * against the seed it issued and computes the score itself. `seed` is accepted
+ * only so a stale tab can be detected; the replay always runs on the stored
+ * seed. Deeper structural checks (ordering, overlap, caps) live in
+ * `simulateRun`, which is the same code the verifier runs.
+ */
+export const stretchRunSchema = z.object({
+  seed: z.number().int().min(0).max(0xffffffff),
+  holds: z
+    .array(
+      z.object({
+        press: z.number().int().min(1),
+        release: z.number().int().min(1),
+      }),
+    )
+    .max(4000, "That replay is too long."),
+});
+export type StretchRunInput = z.infer<typeof stretchRunSchema>;
+
 export const addMemberSchema = z.object({
   name: requiredText("Name", 120),
   email: z.string().trim().min(1, "Email is required.").email("Enter a valid email."),

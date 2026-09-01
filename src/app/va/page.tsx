@@ -2,6 +2,7 @@ import { requireVA } from "@/lib/session";
 import { getVaDayState } from "@/lib/timeEntries";
 import { getUnreadNoticesForUser } from "@/lib/notices";
 import { dismissNoticeAction } from "@/app/notices/actions";
+import { getActiveGamePromo } from "@/lib/leaderboards/registry";
 import { VaDayClient } from "@/components/va/VaDayClient";
 
 export const metadata = { title: "My Day — KSMVP VA Tasks" };
@@ -16,11 +17,16 @@ export default async function VaPage() {
   const firstName = session.name.split(" ")[0] || session.name;
 
   return (
-    <VaDayClient
-      firstName={firstName}
-      state={state}
-      notices={notices}
-      dismissNoticeAction={dismissNoticeAction}
-    />
+    // The VA shell is max-w-6xl so the Games page can breathe; My Day keeps the
+    // narrower reading column it has always had.
+    <div className="mx-auto w-full max-w-3xl">
+      <VaDayClient
+        firstName={firstName}
+        state={state}
+        notices={notices}
+        game={getActiveGamePromo()}
+        dismissNoticeAction={dismissNoticeAction}
+      />
+    </div>
   );
 }

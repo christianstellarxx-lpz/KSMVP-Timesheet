@@ -1,26 +1,37 @@
 import { requireVA } from "@/lib/session";
-import { getWordGameState } from "@/lib/word/game";
-import { getReigningChampion } from "@/lib/leaderboards/registry";
+import {
+  getPastChampions,
+  getReigningChampion,
+} from "@/lib/leaderboards/registry";
+import { STRETCH_SCORING_SUMMARY } from "@/lib/leaderboards/stretchResolver";
+import { getStretchGoalState } from "@/lib/stretch/game";
+import { formatEtDateLong } from "@/lib/time";
+import { PastChampions } from "@/components/games/PastChampions";
 import { ReigningChampion } from "@/components/games/ReigningChampion";
-import { WordGame } from "@/components/games/WordGame";
+import { StretchGoalPanel } from "@/components/games/StretchGoalPanel";
 
 export const metadata = { title: "Games — KSMVP VA Tasks" };
 export const dynamic = "force-dynamic";
 
 /**
- * The game / leaderboard page. Reigning Champion sits at the top (mobile-first),
- * then this month's rotating game — currently Daily Word Guess — with its
- * monthly leaderboard.
+ * The game / leaderboard page. Same route and same "Games" nav label the VAs
+ * already know — only the game inside it changed.
+ *
+ * Reigning Champion sits at the top (mobile-first), then this month's rotating
+ * game — Stretch Goal from September 2026 — with its monthly leaderboard, then
+ * the wall of fame carrying every earlier season including Daily Word Guess.
  */
 export default async function GamesPage() {
   const session = await requireVA();
-  const [champion, word] = await Promise.all([
+  const [champion, stretch, pastChampions] = await Promise.all([
     getReigningChampion(),
-    getWordGameState(session.userId),
+    getStretchGoalState(session.userId),
+    getPastChampions(),
   ]);
 
   return (
-    <div className="space-y-6">
+    // The VA shell is max-w-6xl; the game reads best a little narrower than that.
+    <div className="mx-auto w-full max-w-5xl space-y-6">
       <ReigningChampion champion={champion} />
 
       <div>
@@ -28,11 +39,25 @@ export default async function GamesPage() {
           This month’s game
         </h1>
         <p className="text-sm text-[var(--text-muted)]">
-          {word.dateLabel} · one attempt a day, once you’ve clocked in
+          {formatEtDateLong(stretch.today)} · one ranked run a day, once you’ve
+          timed in and logged your start-of-day task
         </p>
       </div>
 
-      <WordGame initialState={word} meId={session.userId} />
+      <StretchGoalPanel
+        unlocked={stretch.session.unlocked}
+        runUsed={stretch.session.runUsed}
+        runState={stretch.session.runState}
+        seed={stretch.session.seed}
+        season={stretch.session.season}
+        seasonLabel={stretch.seasonLabel}
+        leaderboard={stretch.leaderboard}
+        myRank={stretch.myRank}
+      />
+
+      <p className="text-xs text-[var(--text-muted)]">{STRETCH_SCORING_SUMMARY}</p>
+
+      <PastChampions champions={pastChampions} />
     </div>
   );
 }

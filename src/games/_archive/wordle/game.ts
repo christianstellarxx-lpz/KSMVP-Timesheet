@@ -15,7 +15,7 @@ import {
   WORD_SCORING_SUMMARY,
 } from "@/lib/leaderboards/wordResolver";
 import type { MonthlyLeaderRow } from "@/lib/leaderboards/types";
-import { ANSWER_PLAY_ORDER, isAllowedGuess } from "./lists";
+import { ANSWER_PLAY_ORDER, isAllowedGuess } from "@/lib/word/lists";
 import {
   MAX_GUESSES,
   WORD_EPOCH_DATE,
@@ -29,7 +29,7 @@ import {
   isAttemptComplete,
   monthLabel,
   type Tile,
-} from "./logic";
+} from "@/lib/word/logic";
 
 /**
  * Daily Word Guess — server-authoritative game module.

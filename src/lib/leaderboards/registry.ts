@@ -4,8 +4,9 @@ import {
   monthLabel,
   previousMonthKey,
   type MonthKey,
-} from "@/lib/word/logic";
+} from "./months";
 import { flappyResolver } from "./flappyResolver";
+import { stretchResolver } from "./stretchResolver";
 import { wordResolver } from "./wordResolver";
 import type { GameId, GameResolver, MonthlyLeaderRow } from "./types";
 
@@ -18,6 +19,7 @@ import type { GameId, GameResolver, MonthlyLeaderRow } from "./types";
  */
 export const GAME_ROTATION: readonly { from: MonthKey; gameId: GameId }[] = [
   { from: "2026-08", gameId: "WORD" }, // Daily Word Guess — game #2
+  { from: "2026-09", gameId: "STRETCH" }, // Stretch Goal — game #3
 ];
 
 /** Months before the rotation started were Daily Flappy's. */
@@ -26,7 +28,22 @@ export const DEFAULT_GAME_ID: GameId = "FLAPPY";
 const RESOLVERS: Record<GameId, GameResolver> = {
   FLAPPY: flappyResolver,
   WORD: wordResolver,
+  STRETCH: stretchResolver,
 };
+
+/**
+ * The game live right now — the single source of truth for "this month's game",
+ * derived from the rotation rather than declared a second time beside it.
+ *
+ * Handing next month to a new game is still one line: add its resolver file and
+ * one GAME_ROTATION entry. Deriving ACTIVE_GAME from the rotation (instead of
+ * standing it up as its own constant) is what keeps the wall of fame honest —
+ * the rotation remembers which game was live in *every* past month, so August
+ * still resolves to Daily Word Guess after the swap.
+ */
+export function activeGameId(now: Date = new Date()): GameId {
+  return gameIdForMonth(etCurrentMonthKey(now));
+}
 
 export function resolverFor(gameId: GameId): GameResolver {
   return RESOLVERS[gameId];
@@ -98,4 +115,92 @@ export async function getReigningChampion(
     monthLabel: monthLabel(lastMonth),
     isFallback: false,
   };
+}
+
+// ---------------------------------------------------------------------------
+// The promo card on the VA dashboard
+// ---------------------------------------------------------------------------
+
+export interface ActiveGamePromo {
+  /** e.g. "Stretch Goal" */
+  name: string;
+  tagline: string;
+  icon: string;
+}
+
+/**
+ * What this month's game is called, for the "this month's game" card on the VA
+ * dashboard.
+ *
+ * Read from the rotation rather than written into the component, because the
+ * component is exactly where a stale name hides: /va went on advertising Daily
+ * Word Guess after the September swap. Now the swap carries the card with it.
+ */
+export function getActiveGamePromo(now: Date = new Date()): ActiveGamePromo {
+  const resolver = resolverFor(activeGameId(now));
+  return {
+    name: resolver.name,
+    tagline: resolver.tagline,
+    icon: resolver.icon,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Wall of fame — every past season's winner
+// ---------------------------------------------------------------------------
+
+export interface PastChampion {
+  /** "2026-08" */
+  monthKey: MonthKey;
+  /** "August 2026" */
+  monthLabel: string;
+  /** The game that was live that month, e.g. "Daily Word Guess". */
+  gameName: string;
+  scoreLabel: string;
+  name: string;
+  score: number;
+  /** That game's secondary stat, e.g. "18/21 solved · 62 guesses". */
+  detail: string;
+}
+
+/**
+ * The winner of each completed season, newest first.
+ *
+ * This is the reason Wordle was archived rather than deleted. Each month is
+ * resolved through the game that was live *then* (see GAME_ROTATION), so
+ * August still renders as a Daily Word Guess season, scored by Word's own
+ * rules, long after the game itself stopped being mounted.
+ *
+ * Months with no play are skipped rather than shown empty.
+ */
+export async function getPastChampions(
+  limit = 6,
+  now: Date = new Date(),
+): Promise<PastChampion[]> {
+  let monthKey = previousMonthKey(etCurrentMonthKey(now));
+  const out: PastChampion[] = [];
+
+  for (let i = 0; i < limit; i++) {
+    const resolver = resolverForMonth(monthKey);
+    try {
+      const rows = await resolver.resolveMonthly(monthKey);
+      const winner = rows[0];
+      if (winner) {
+        out.push({
+          monthKey,
+          monthLabel: monthLabel(monthKey),
+          gameName: resolver.name,
+          scoreLabel: resolver.scoreLabel,
+          name: winner.name,
+          score: winner.points,
+          detail: winner.detail,
+        });
+      }
+    } catch {
+      // One month failing to resolve must not take the wall down.
+    }
+    monthKey = previousMonthKey(monthKey);
+  }
+
+  return out;
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession, canViewVa } from "@/lib/session";
-import { getWordGameState } from "@/lib/word/game";
+import { getWordGameState } from "../game";
 
 export const dynamic = "force-dynamic";
 

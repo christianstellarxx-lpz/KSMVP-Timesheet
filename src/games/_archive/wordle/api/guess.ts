@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getSession, canViewVa } from "@/lib/session";
-import { submitWordGuess } from "@/lib/word/game";
+import { submitWordGuess } from "../game";
 import { wordGuessSchema } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";

@@ -9,7 +9,7 @@ import type { MonthKey } from "@/lib/word/logic";
  * one file plus one line in `registry.ts`, with no leaderboard rework.
  */
 
-export type GameId = "FLAPPY" | "WORD";
+export type GameId = "FLAPPY" | "WORD" | "STRETCH";
 
 export interface MonthlyLeaderRow {
   rank: number;
@@ -29,6 +29,13 @@ export interface GameResolver {
   name: string;
   /** Caption above the headline number, e.g. "TOP SCORE". */
   scoreLabel: string;
+  /**
+   * One-line pitch for the promo card on the VA dashboard, and the emoji beside
+   * it. They live here, with the rest of the game's identity, so a rotation
+   * never leaves a stale game name stranded in a component.
+   */
+  tagline: string;
+  icon: string;
   /** Ranked rows for an ET calendar month ("2026-08"), best first. */
   resolveMonthly(monthKey: MonthKey): Promise<MonthlyLeaderRow[]>;
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { WordGameState, WordLeaderRow } from "@/lib/word/game";
+import type { WordGameState, WordLeaderRow } from "./game";
 import {
   MAX_GUESSES,
   WORD_LENGTH,
