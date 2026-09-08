@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import StretchGoal from "./StretchGoal";
 import type { LeaderRow, RunResult } from "@/lib/stretch/core";
+import type { DailyTally } from "./StretchGoal";
 
 /**
  * Host wrapper for the Stretch Goal cabinet.
@@ -26,6 +27,7 @@ export interface StretchGoalPanelProps {
   seasonLabel: string;
   season: string;
   leaderboard: LeaderRow[];
+  dailyTally: DailyTally;
   myRank: number | null;
 }
 
@@ -40,6 +42,7 @@ interface SessionResponse {
 interface LeaderboardResponse {
   myRank: number | null;
   rows: LeaderRow[];
+  today: DailyTally;
 }
 
 export function StretchGoalPanel({
@@ -50,6 +53,7 @@ export function StretchGoalPanel({
   seasonLabel,
   season,
   leaderboard: initialLeaderboard,
+  dailyTally: initialTally,
   myRank: initialRank,
 }: StretchGoalPanelProps) {
   const router = useRouter();
@@ -58,6 +62,7 @@ export function StretchGoalPanel({
   const [runState, setRunState] = useState(initialRunState);
   const [seed, setSeed] = useState(initialSeed);
   const [rows, setRows] = useState(initialLeaderboard);
+  const [tally, setTally] = useState(initialTally);
   const [rank, setRank] = useState(initialRank);
   const [error, setError] = useState("");
 
@@ -79,6 +84,7 @@ export function StretchGoalPanel({
       const next = (await boardRes.json()) as LeaderboardResponse;
       setRows(next.rows);
       setRank(next.myRank);
+      setTally(next.today);
     }
   }, [season]);
 
@@ -141,6 +147,7 @@ export function StretchGoalPanel({
         abandoned={runState === "started"}
         seasonLabel={seasonLabel}
         leaderboard={rows}
+        dailyTally={tally}
         rankLabel={rank ? `#${rank}` : undefined}
         onTimeIn={() => router.push("/va")}
         onRunStart={onRunStart}

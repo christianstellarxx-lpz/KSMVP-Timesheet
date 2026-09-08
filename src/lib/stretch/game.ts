@@ -6,9 +6,11 @@ import { isClockedInToday } from "@/lib/game";
 import {
   etToday,
   etDateStringToStorageDate,
+  formatEtDateShort,
   storageDateToEtDateString,
   type EtDateString,
 } from "@/lib/time";
+import { VA_ROLES } from "@/lib/session";
 import {
   etCurrentMonthKey,
   monthKeyForDate,
@@ -110,6 +112,25 @@ export type SubmitRunResult =
 export interface SeasonLeaderRow extends LeaderRow {
   userId: string;
   rank: number;
+}
+
+/** Today's scoreboard: who has played today and what they got. */
+export interface DailyTally {
+  /** ET calendar day this tally covers. */
+  date: EtDateString;
+  /** "Sep 7" — compact, for the narrow rail card. */
+  dateLabel: string;
+  /** Everyone who submitted a run today, best first. */
+  rows: SeasonLeaderRow[];
+  /**
+   * VAs who are unlocked today and still hold their run.
+   *
+   * Counted, not listed: the card should say whether the day is done without
+   * doubling as a public roll call of who has not played. Someone who started
+   * and abandoned is in neither number — their attempt is spent, so they are
+   * not "still to play", and they never submitted, so they are not a row.
+   */
+  stillToPlay: number;
 }
 
 /**
@@ -470,6 +491,78 @@ export async function getRailLeaderboard(
   return top;
 }
 
+/**
+ * Today's tally, ranked the same way the season is: score desc, then perfects.
+ *
+ * Separate from the season board on purpose. The season ranks each VA's single
+ * best run of the month, so on any given day it barely moves; this answers the
+ * question people actually ask each other in the morning — who has played today
+ * and what did they get.
+ */
+export async function getDailyTally(
+  meId: string,
+  date: EtDateString = etToday(),
+): Promise<DailyTally> {
+  const playedOn = etDateStringToStorageDate(date);
+
+  const [submitted, spent, unlocked] = await Promise.all([
+    prisma.miniGameRun.findMany({
+      where: { gameKey: STRETCH_GAME_KEY, playedOn, status: RUN_SUBMITTED },
+      select: {
+        userId: true,
+        score: true,
+        perfects: true,
+        user: { select: { name: true } },
+      },
+    }),
+    // Anyone whose attempt is gone, submitted or merely started.
+    prisma.miniGameRun.findMany({
+      where: {
+        gameKey: STRETCH_GAME_KEY,
+        playedOn,
+        status: { in: [RUN_STARTED, RUN_SUBMITTED] },
+      },
+      select: { userId: true },
+    }),
+    // The unlock gate, applied across the team: a WORK time-in for today with a
+    // start-of-day task saved. PTO and unstarted shifts are excluded, so the
+    // count means "can still play", not "has not played".
+    prisma.timeEntry.findMany({
+      where: {
+        workDate: playedOn,
+        entryType: "WORK",
+        timeIn: { not: null },
+        va: { role: { in: VA_ROLES } },
+      },
+      select: { vaId: true, startOfDayTasks: true },
+    }),
+  ]);
+
+  const rows = submitted
+    .map((row) => ({
+      rank: 0,
+      userId: row.userId,
+      name: row.user.name,
+      score: row.score,
+      perfects: row.perfects,
+      isYou: row.userId === meId,
+    }))
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        b.perfects - a.perfects ||
+        a.name.localeCompare(b.name),
+    )
+    .map((row, i) => ({ ...row, rank: i + 1 }));
+
+  const spentIds = new Set(spent.map((r) => r.userId));
+  const stillToPlay = unlocked.filter(
+    (e) => e.startOfDayTasks.trim().length > 0 && !spentIds.has(e.vaId),
+  ).length;
+
+  return { date, dateLabel: formatEtDateShort(date), rows, stillToPlay };
+}
+
 /** This player's rank this season, or null if they haven't posted a run. */
 export async function getMyRank(
   season: MonthKey,
@@ -486,6 +579,7 @@ export async function getMyRank(
 export interface StretchGoalState {
   session: MiniGameSession;
   leaderboard: SeasonLeaderRow[];
+  dailyTally: DailyTally;
   myRank: number | null;
   seasonLabel: string;
   /** Today's ET date, for the "one run a day" copy. */
@@ -497,17 +591,20 @@ export async function getStretchGoalState(
   userId: string,
 ): Promise<StretchGoalState> {
   const session = await getMiniGameSession(userId);
-  const [leaderboard, myRank] = await Promise.all([
+  const today = etToday();
+  const [leaderboard, dailyTally, myRank] = await Promise.all([
     getRailLeaderboard(session.season, userId),
+    getDailyTally(userId, today),
     getMyRank(session.season, userId),
   ]);
 
   return {
     session,
     leaderboard,
+    dailyTally,
     myRank,
     seasonLabel: seasonLabelFor(session.season),
-    today: etToday(),
+    today,
   };
 }
 

@@ -1,7 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getSession, canViewVa } from "@/lib/session";
 import { etCurrentMonthKey, isMonthKey } from "@/lib/leaderboards/months";
-import { getRailLeaderboard, seasonLabelFor } from "@/lib/stretch/game";
+import {
+  getDailyTally,
+  getRailLeaderboard,
+  seasonLabelFor,
+} from "@/lib/stretch/game";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +16,10 @@ export const dynamic = "force-dynamic";
  * then perfects desc, with the caller's own row flagged. `season` defaults to
  * the current ET month; anything that isn't a well-formed "YYYY-MM" is rejected
  * rather than silently coerced.
+ *
+ * Also returns `today` — the daily tally. It is always *today*, never scoped to
+ * the season queried (it carries its own `date` so it is self-describing), and
+ * it rides along here so the panel refreshes both boards in one round trip.
  */
 export async function GET(req: NextRequest) {
   const session = await getSession();
@@ -34,7 +42,10 @@ export async function GET(req: NextRequest) {
   }
   const season = requested ?? etCurrentMonthKey();
 
-  const rows = await getRailLeaderboard(season, session.userId);
+  const [rows, tally] = await Promise.all([
+    getRailLeaderboard(season, session.userId),
+    getDailyTally(session.userId),
+  ]);
   const me = rows.find((r) => r.isYou);
 
   return NextResponse.json(
@@ -48,6 +59,17 @@ export async function GET(req: NextRequest) {
         perfects: r.perfects,
         isYou: r.isYou ?? false,
       })),
+      today: {
+        date: tally.date,
+        dateLabel: tally.dateLabel,
+        stillToPlay: tally.stillToPlay,
+        rows: tally.rows.map((r) => ({
+          name: r.name,
+          score: r.score,
+          perfects: r.perfects,
+          isYou: r.isYou ?? false,
+        })),
+      },
     },
     { headers: { "Cache-Control": "no-store" } },
   );

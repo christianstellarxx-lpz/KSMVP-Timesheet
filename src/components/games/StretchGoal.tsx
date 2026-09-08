@@ -37,6 +37,14 @@ import {
 
 export type { Hold, LeaderRow, RunResult };
 
+/** Today's rows plus how many VAs still hold an unplayed run. */
+export interface DailyTally {
+  /** "Sep 7" */
+  dateLabel: string;
+  rows: LeaderRow[];
+  stillToPlay: number;
+}
+
 export interface StretchGoalProps {
   /** true once the VA has timed in AND saved a start-of-day task */
   unlocked: boolean;
@@ -59,6 +67,12 @@ export interface StretchGoalProps {
   onTimeIn?: () => void;
   /** rows for the side rail. Omit to hide the leaderboard card. */
   leaderboard?: LeaderRow[];
+  /**
+   * Today's scoreboard, shown above the season board. The season ranks each
+   * VA's best run of the month and so barely moves day to day; this is the one
+   * people check in the morning.
+   */
+  dailyTally?: DailyTally;
   /** e.g. "September Season". Defaults to the current month. */
   seasonLabel?: string;
   /** hide the whole right-hand rail if the host page has its own */
@@ -312,6 +326,11 @@ const CSS = `
 .sg-card h3{font-family:var(--sg-display);font-size:10px;font-weight:600;letter-spacing:.14em;
   text-transform:uppercase;color:var(--sg-on-card-dim);margin:0;padding:10px 13px;
   background:var(--sg-card-head);border-bottom:1px solid var(--sg-card-line)}
+/* Footer line under the daily tally, and its empty state. */
+.sg-foot{margin:0;padding:7px 13px;font-family:var(--sg-display);font-size:10.5px;
+  font-weight:600;letter-spacing:.04em;color:var(--sg-on-card-mute);
+  border-top:1px solid var(--sg-card-line)}
+.sg-empty{margin:0;padding:11px 13px;font-size:11.5px;color:var(--sg-on-card-mute)}
 .sg-lb{list-style:none;margin:0;padding:3px 0}
 .sg-lb li{display:grid;grid-template-columns:20px 1fr auto;align-items:center;gap:9px;
   padding:6px 13px;font-size:12.5px;border-left:3px solid transparent}
@@ -354,6 +373,7 @@ export default function StretchGoal({
   abandoned = false,
   onTimeIn,
   leaderboard,
+  dailyTally,
   seasonLabel,
   showRail = true,
   rankLabel,
@@ -500,6 +520,8 @@ export default function StretchGoal({
   }, []);
 
   const rows = (leaderboard ?? []).slice().sort((a, b) => b.score - a.score || b.perfects - a.perfects);
+  const todayRows = dailyTally?.rows ?? [];
+  const showToday = !!dailyTally && (todayRows.length > 0 || dailyTally.stillToPlay > 0);
 
   return (
     // .sg-root is the query container everything below measures itself against.
@@ -602,6 +624,35 @@ export default function StretchGoal({
 
       {showRail && (
         <div className="sg-rail">
+          {showToday && (
+            <div className="sg-card">
+              <h3>Today · {dailyTally!.dateLabel}</h3>
+              {todayRows.length > 0 ? (
+                <ol className="sg-lb">
+                  {todayRows.slice(0, 10).map((r, i) => (
+                    <li
+                      key={`today-${r.name}-${i}`}
+                      className={`${i === 0 ? "sg-top " : ""}${r.isYou ? "sg-you" : ""}`}
+                    >
+                      <span className="rk">{i + 1}</span>
+                      <span className="nm">
+                        {r.name} <span className="pf">{r.perfects} perfect</span>
+                      </span>
+                      <span className="sc">{r.score}</span>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="sg-empty">No runs in yet today.</p>
+              )}
+              {dailyTally!.stillToPlay > 0 && (
+                <p className="sg-foot">
+                  {dailyTally!.stillToPlay} still to play
+                </p>
+              )}
+            </div>
+          )}
+
           {rows.length > 0 && (
             <div className="sg-card">
               <h3>{season}</h3>

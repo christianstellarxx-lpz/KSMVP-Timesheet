@@ -6,6 +6,7 @@ import {
   RUN_STARTED,
   RUN_SUBMITTED,
   STRETCH_GAME_KEY,
+  getDailyTally,
   getMiniGameSession,
   isUnlockedToday,
   startRun,
@@ -409,6 +410,126 @@ describe.skipIf(!DB_CONFIGURED)("stretch goal — database rules", () => {
       const after = await getMiniGameSession(userId);
       expect(after.runState).toBe("submitted");
       expect(after.runUsed).toBe(true);
+    });
+  });
+
+  /* -----------------------------------------------------------------------
+     Today's tally
+     ----------------------------------------------------------------------- */
+
+  describe("daily tally", () => {
+    it("lists today's submitted runs best first, flagging the caller", async () => {
+      await prisma.miniGameRun.deleteMany({ where: { userId } });
+      const session = await getMiniGameSession(userId);
+      await startRun(userId);
+      const run = driveRun(session.seed!, 40, jitterForBeam);
+      expect((await submitRun(userId, session.seed!, run.holds)).ok).toBe(true);
+
+      const tally = await getDailyTally(userId);
+      expect(tally.date).toBe(today);
+      expect(tally.dateLabel.length).toBeGreaterThan(0);
+
+      const mine = tally.rows.find((r) => r.userId === userId);
+      expect(mine, "the fixture's run is missing from today").toBeDefined();
+      expect(mine!.isYou).toBe(true);
+      expect(mine!.score).toBeGreaterThan(0);
+
+      // Ranked score desc, then perfects desc — same order as the season board.
+      for (let i = 1; i < tally.rows.length; i++) {
+        const prev = tally.rows[i - 1];
+        const cur = tally.rows[i];
+        expect(
+          prev.score > cur.score ||
+            (prev.score === cur.score && prev.perfects >= cur.perfects),
+          `row ${i} is out of order`,
+        ).toBe(true);
+      }
+      expect(tally.rows.map((r) => r.rank)).toEqual(
+        tally.rows.map((_, i) => i + 1),
+      );
+    });
+
+    it("counts an unlocked VA who still holds their run as still to play", async () => {
+      await prisma.miniGameRun.deleteMany({ where: { userId } });
+
+      const before = await getDailyTally(userId);
+      expect(before.rows.some((r) => r.userId === userId)).toBe(false);
+      // The fixture is timed in with a SOD task from the unlock suite above.
+      const withFixture = before.stillToPlay;
+      expect(withFixture).toBeGreaterThan(0);
+
+      // Starting spends the attempt, so they are no longer "still to play" —
+      // and having not submitted, they are not a row either.
+      await startRun(userId);
+      const after = await getDailyTally(userId);
+      expect(after.stillToPlay).toBe(withFixture - 1);
+      expect(after.rows.some((r) => r.userId === userId)).toBe(false);
+    });
+
+    it("excludes a VA on PTO from the still-to-play count", async () => {
+      await prisma.miniGameRun.deleteMany({ where: { userId } });
+      await prisma.timeEntry.deleteMany({ where: { vaId: userId } });
+      await prisma.timeEntry.create({
+        data: {
+          vaId: userId,
+          workDate: playedOn,
+          startOfDayTasks: "Paid time off",
+          entryType: "PTO",
+          status: "CLOSED",
+        },
+      });
+
+      const tally = await getDailyTally(userId);
+      // They cannot play, so they must not be counted as able to.
+      const withPto = tally.stillToPlay;
+
+      await prisma.timeEntry.deleteMany({ where: { vaId: userId } });
+      await prisma.timeEntry.create({
+        data: {
+          vaId: userId,
+          workDate: playedOn,
+          timeIn: new Date(),
+          startOfDayTasks: "Back at it",
+          entryType: "WORK",
+          status: "OPEN",
+        },
+      });
+      const working = await getDailyTally(userId);
+      expect(working.stillToPlay).toBe(withPto + 1);
+    });
+
+    it("reports an empty day for a date nobody played", async () => {
+      const tally = await getDailyTally(userId, "2020-01-01");
+      expect(tally.rows).toEqual([]);
+      expect(tally.stillToPlay).toBe(0);
+      expect(tally.date).toBe("2020-01-01");
+    });
+
+    it("is scoped to one day — yesterday's runs do not leak in", async () => {
+      await prisma.miniGameRun.deleteMany({ where: { userId } });
+      const yesterday = new Date(playedOn);
+      yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+
+      await prisma.miniGameRun.create({
+        data: {
+          userId,
+          gameKey: STRETCH_GAME_KEY,
+          season: today.slice(0, 7),
+          playedOn: yesterday,
+          seed: 4242,
+          score: 999,
+          perfects: 99,
+          tier: 4,
+          replayVersion: 1,
+          status: RUN_SUBMITTED,
+          submittedAt: new Date(),
+        },
+      });
+
+      const tally = await getDailyTally(userId);
+      expect(tally.rows.some((r) => r.score === 999)).toBe(false);
+
+      await prisma.miniGameRun.deleteMany({ where: { userId } });
     });
   });
 

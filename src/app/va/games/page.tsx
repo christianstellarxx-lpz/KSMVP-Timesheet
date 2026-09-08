@@ -52,6 +52,7 @@ export default async function GamesPage() {
         season={stretch.session.season}
         seasonLabel={stretch.seasonLabel}
         leaderboard={stretch.leaderboard}
+        dailyTally={stretch.dailyTally}
         myRank={stretch.myRank}
       />
 
