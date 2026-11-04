@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession, canViewVa } from "@/lib/session";
+import { GAMES_ENABLED } from "@/lib/features";
 import { getMiniGameSession } from "@/lib/stretch/game";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,9 @@ export const dynamic = "force-dynamic";
  * fetch() to /login.
  */
 export async function GET() {
+  if (!GAMES_ENABLED) {
+    return NextResponse.json({ error: "Games are turned off." }, { status: 404 });
+  }
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Not signed in." }, { status: 401 });

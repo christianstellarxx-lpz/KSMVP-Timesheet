@@ -1,4 +1,6 @@
+import { redirect } from "next/navigation";
 import { requireVA } from "@/lib/session";
+import { GAMES_ENABLED } from "@/lib/features";
 import {
   getPastChampions,
   getReigningChampion,
@@ -23,6 +25,8 @@ export const dynamic = "force-dynamic";
  */
 export default async function GamesPage() {
   const session = await requireVA();
+  // Games are off for everyone — send old bookmarks back to My Day.
+  if (!GAMES_ENABLED) redirect("/va");
   const [champion, stretch, pastChampions] = await Promise.all([
     getReigningChampion(),
     getStretchGoalState(session.userId),

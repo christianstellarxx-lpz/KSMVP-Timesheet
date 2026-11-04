@@ -27,8 +27,8 @@ export function VaDayClient({
   firstName: string;
   state: VaDayState;
   notices: NoticeDTO[];
-  /** This month's rotating game, resolved from GAME_ROTATION. */
-  game: ActiveGamePromo;
+  /** This month's rotating game, resolved from GAME_ROTATION; null while games are off. */
+  game: ActiveGamePromo | null;
   dismissNoticeAction: (formData: FormData) => void | Promise<void>;
 }) {
   const active =
@@ -166,37 +166,40 @@ export function VaDayClient({
       </div>
 
       {/* This month's rotating game lives on the Games page, alongside the
-          Reigning Champion spotlight and the monthly leaderboard. */}
-      <Link
-        href="/va/games"
-        className="card flex items-center gap-3 px-4 py-3 transition-shadow hover:shadow-card-hover sm:px-5"
-      >
-        <span className="text-2xl" aria-hidden>
-          {game.icon}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block font-heading text-sm font-bold text-brand-blue-700">
-            {game.name} — this month’s game
-          </span>
-          <span className="block text-xs text-[var(--text-muted)]">
-            {game.tagline} See the leaderboard &amp; reigning champion.
-          </span>
-        </span>
-        <svg
-          className="h-5 w-5 shrink-0 text-brand-orange-500"
-          viewBox="0 0 24 24"
-          fill="none"
-          aria-hidden
+          Reigning Champion spotlight and the monthly leaderboard. Hidden while
+          GAMES_ENABLED (lib/features.ts) is false. */}
+      {game && (
+        <Link
+          href="/va/games"
+          className="card flex items-center gap-3 px-4 py-3 transition-shadow hover:shadow-card-hover sm:px-5"
         >
-          <path
-            d="m9 18 6-6-6-6"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </Link>
+          <span className="text-2xl" aria-hidden>
+            {game.icon}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-heading text-sm font-bold text-brand-blue-700">
+              {game.name} — this month’s game
+            </span>
+            <span className="block text-xs text-[var(--text-muted)]">
+              {game.tagline} See the leaderboard &amp; reigning champion.
+            </span>
+          </span>
+          <svg
+            className="h-5 w-5 shrink-0 text-brand-orange-500"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-hidden
+          >
+            <path
+              d="m9 18 6-6-6-6"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </Link>
+      )}
 
       {/* Daily Flappy is hidden — the rotating game on /va/games is the one in
           play. The component (components/va/FlappyGame.tsx), its lib

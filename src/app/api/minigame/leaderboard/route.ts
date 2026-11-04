@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getSession, canViewVa } from "@/lib/session";
+import { GAMES_ENABLED } from "@/lib/features";
 import { etCurrentMonthKey, isMonthKey } from "@/lib/leaderboards/months";
 import {
   getDailyTally,
@@ -22,6 +23,9 @@ export const dynamic = "force-dynamic";
  * it rides along here so the panel refreshes both boards in one round trip.
  */
 export async function GET(req: NextRequest) {
+  if (!GAMES_ENABLED) {
+    return NextResponse.json({ error: "Games are turned off." }, { status: 404 });
+  }
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Not signed in." }, { status: 401 });

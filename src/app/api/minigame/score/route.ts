@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getSession, canViewVa } from "@/lib/session";
+import { GAMES_ENABLED } from "@/lib/features";
 import { check } from "@/lib/rateLimit";
 import { submitRun } from "@/lib/stretch/game";
 import { stretchRunSchema } from "@/lib/validation";
@@ -44,6 +45,9 @@ function logRejection(
 }
 
 export async function POST(req: NextRequest) {
+  if (!GAMES_ENABLED) {
+    return NextResponse.json({ error: "Games are turned off." }, { status: 404 });
+  }
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Not signed in." }, { status: 401 });

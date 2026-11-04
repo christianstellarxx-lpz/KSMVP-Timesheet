@@ -3,6 +3,7 @@ import { getVaDayState } from "@/lib/timeEntries";
 import { getUnreadNoticesForUser } from "@/lib/notices";
 import { dismissNoticeAction } from "@/app/notices/actions";
 import { getActiveGamePromo } from "@/lib/leaderboards/registry";
+import { GAMES_ENABLED } from "@/lib/features";
 import { VaDayClient } from "@/components/va/VaDayClient";
 
 export const metadata = { title: "My Day — KSMVP VA Tasks" };
@@ -24,7 +25,7 @@ export default async function VaPage() {
         firstName={firstName}
         state={state}
         notices={notices}
-        game={getActiveGamePromo()}
+        game={GAMES_ENABLED ? getActiveGamePromo() : null}
         dismissNoticeAction={dismissNoticeAction}
       />
     </div>

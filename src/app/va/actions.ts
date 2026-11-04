@@ -11,6 +11,7 @@ import {
 } from "@/lib/timeEntries";
 import { markCommentsReadForVa } from "@/lib/comments";
 import { submitGameScore, type SubmitScoreResult } from "@/lib/game";
+import { GAMES_ENABLED } from "@/lib/features";
 import {
   timeInSchema,
   timeOutSchema,
@@ -139,5 +140,6 @@ export async function submitGameScoreAction(
   score: number,
 ): Promise<SubmitScoreResult> {
   const session = await requireVA();
+  if (!GAMES_ENABLED) return { ok: false, message: "Games are turned off." };
   return submitGameScore(session.userId, score);
 }

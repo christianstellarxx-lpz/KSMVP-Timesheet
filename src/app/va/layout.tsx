@@ -1,6 +1,7 @@
 import { TopNav } from "@/components/TopNav";
 import { AppFooter } from "@/components/AppFooter";
 import { requireVA, canViewAdmin } from "@/lib/session";
+import { GAMES_ENABLED } from "@/lib/features";
 import type { NavItem } from "@/components/NavLinks";
 
 export default async function VaLayout({
@@ -10,18 +11,19 @@ export default async function VaLayout({
 }) {
   const session = await requireVA();
 
-  // Everyone with a VA dashboard gets the Games tab; VA Admins additionally get
-  // a tab to switch over to the admin dashboard (VA dashboard first).
+  // Everyone with a VA dashboard gets the Games tab (while GAMES_ENABLED); VA
+  // Admins additionally get a tab to switch over to the admin dashboard (VA
+  // dashboard first).
+  const gamesTab: NavItem[] = GAMES_ENABLED
+    ? [{ href: "/va/games", label: "Games" }]
+    : [];
   const navItems: NavItem[] = canViewAdmin(session.role)
     ? [
         { href: "/va", label: "My VA Dashboard" },
-        { href: "/va/games", label: "Games" },
+        ...gamesTab,
         { href: "/client", label: "Admin Dashboard" },
       ]
-    : [
-        { href: "/va", label: "My Day" },
-        { href: "/va/games", label: "Games" },
-      ];
+    : [{ href: "/va", label: "My Day" }, ...gamesTab];
 
   return (
     <div className="flex min-h-screen flex-col">

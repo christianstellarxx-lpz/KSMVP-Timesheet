@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession, canViewVa } from "@/lib/session";
+import { GAMES_ENABLED } from "@/lib/features";
 import { check } from "@/lib/rateLimit";
 import { startRun } from "@/lib/stretch/game";
 
@@ -25,6 +26,9 @@ const START_LIMIT = 6;
 const START_WINDOW_MS = 5 * 60_000;
 
 export async function POST() {
+  if (!GAMES_ENABLED) {
+    return NextResponse.json({ error: "Games are turned off." }, { status: 404 });
+  }
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Not signed in." }, { status: 401 });
