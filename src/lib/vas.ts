@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { hashPassword } from "./password";
 import { canViewVa, type Role } from "./session";
+import { formatEtDateLong, etDateStringForInstant } from "./time";
 import { DEFAULT_PIN, type AddMemberInput } from "./validation";
 
 export interface TeamMember {
@@ -13,6 +14,8 @@ export interface TeamMember {
   role: Role;
   entryCount: number;
   hasVaDashboard: boolean;
+  /** "Wed, Nov 4, 2026" when removed from the team; null while active. */
+  removedOnLabel: string | null;
 }
 
 const ROLE_ORDER: Record<Role, number> = {
@@ -33,6 +36,7 @@ export async function getTeamMembers(): Promise<TeamMember[]> {
       email: true,
       title: true,
       role: true,
+      removedAt: true,
       _count: { select: { timeEntries: true } },
     },
   });
@@ -47,6 +51,9 @@ export async function getTeamMembers(): Promise<TeamMember[]> {
         role,
         entryCount: u._count.timeEntries,
         hasVaDashboard: canViewVa(role),
+        removedOnLabel: u.removedAt
+          ? formatEtDateLong(etDateStringForInstant(u.removedAt))
+          : null,
       };
     })
     .sort(
@@ -81,8 +88,38 @@ export async function addTeamMember(
       e instanceof Prisma.PrismaClientKnownRequestError &&
       e.code === "P2002"
     ) {
-      return { ok: false, message: "An account with that email already exists." };
+      return {
+        ok: false,
+        message:
+          "An account with that email already exists. If they were removed, restore them under Removed members.",
+      };
     }
     return { ok: false, message: "Could not create the member. Please try again." };
   }
+}
+
+/**
+ * Remove a member from the team — a soft remove (see User.removedAt): they
+ * can't sign in and leave the roster, but their reports and the feedback they
+ * wrote are kept. Nobody can remove themselves, which also means the last
+ * admin can never be removed (only admins can remove, so one always remains).
+ */
+export async function removeTeamMember(
+  actorId: string,
+  memberId: string,
+): Promise<void> {
+  if (!memberId || memberId === actorId) return;
+  await prisma.user.updateMany({
+    where: { id: memberId, removedAt: null },
+    data: { removedAt: new Date() },
+  });
+}
+
+/** Bring a removed member back. Their PIN and history are unchanged. */
+export async function restoreTeamMember(memberId: string): Promise<void> {
+  if (!memberId) return;
+  await prisma.user.updateMany({
+    where: { id: memberId, removedAt: { not: null } },
+    data: { removedAt: null },
+  });
 }

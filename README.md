@@ -1,11 +1,11 @@
 # KSMVP VA Tasks
 
-**Virtual Assistant time-tracking & task-reporting for the Kevin Spann Mentorship Value Program.**
+**Virtual Assistant daily task-reporting for the Kevin Spann Mentorship Value Program.**
 _We Make AI Easy._
 
-VAs clock in and out of their workday, log planned tasks at clock-in and completed
-tasks at clock-out, and flag anything urgent. Clients get a clean dashboard to
-review all of their VAs' activity at a glance.
+VAs send a Start-of-Day plan and an End-of-Day report each day and flag anything
+urgent. Admins get a clean dashboard showing what every VA worked on. There are
+no clock times or hours — this is a work log, not a payroll timesheet.
 
 ---
 
@@ -17,24 +17,25 @@ review all of their VAs' activity at a glance.
     directors) — displayed everywhere simply as "Virtual Assistant", but sees the
     admin dashboard **and** their own VA dashboard, with a tab to switch between
     them.
-  - **VA** — their own Time In/Out dashboard.
-  - **Intern** — their own Time In/Out dashboard (same access as VA).
-- **Time In** — big orange button opens a modal with, in order: an editable
-  **8:45 AM ET** clock, required **Start-of-Day Tasks**, and an optional
-  **Urgent Need / Support** field.
-- **Time Out** — editable **5:00 PM ET** clock + required **End-of-Day Tasks**;
-  hours worked are computed **server-side** and rounded to the nearest **whole
-  hour** (a standard 8:45–5:00 shift reads as 8).
-- **PTO / Vacation** — VAs can log a paid time-off / vacation day from the "Log
-  PTO / Vacation" button; it's credited as a full **8-hour day** (no clock in/out)
-  and shown distinctly on the client dashboard.
-- **Guards** — a VA can never have two open sessions; a forgotten time-out from a
-  previous day is flagged `INCOMPLETE` (never given fabricated hours) and the VA
-  is prompted to close it before starting a new day.
-- **Client dashboard** — one card per day per VA with **start/end tasks side by
-  side**, unmistakable **urgent highlighting** (only when filled), **on-time /
-  late-in / early-out** benchmark chips vs the scheduled shift, plus **date-range
-  + VA filters** and **sorting** (including urgent-first).
+  - **VA** — their own "My Day" dashboard.
+  - **Intern** — their own "My Day" dashboard (same access as VA).
+- **Plan my week** — on Monday a VA writes Mon–Fri tasks once. Each morning that
+  day's plan prefills Start of Day; the VA still reviews and submits it. Admins
+  never see the plan, only the daily reports.
+- **Start of Day** — required **Start-of-Day Tasks** + optional **Urgent Need /
+  Support**. Admins see it as soon as it's submitted.
+- **End of Day** — prefilled with a **Gemini** draft of the Start of Day rewritten
+  in past tense (or the Start of Day itself if Gemini is off or unavailable). The
+  VA edits it and presses **Sched**; it reaches admins at **5:00 PM ET**, or right
+  away if submitted later.
+- **PTO / Vacation** — a day marker from the "Log PTO / Vacation" button; no
+  reports needed, shown distinctly on the admin dashboard.
+- **Guards** — a VA can never have two open days; a Start of Day with no End of
+  Day is flagged `INCOMPLETE` and the VA is prompted to add the report before
+  starting a new day.
+- **Admin dashboard** — one card per day per VA with **start/end reports side by
+  side**, unmistakable **urgent highlighting** (only when filled), plus **day +
+  VA filters** and **sorting** (including urgent-first).
 - **Admin feedback + notifications** — admins can leave a **comment** on any
   entry (targeting the **Start-of-day tasks** or **End of Day Report**). The VA
   sees it in a **"Feedback from your admin"** panel on their dashboard with a
@@ -82,6 +83,7 @@ cp .env.example .env
 #    - DATABASE_URL / DATABASE_URL_UNPOOLED: your Postgres connection string(s).
 #      If you only have one, set both to the same value.
 #    - AUTH_SECRET: a long random string  ->  openssl rand -base64 32
+#    - GEMINI_API_KEY (optional): End-of-Day drafts — https://aistudio.google.com
 
 # 3. Create the schema and seed the org roster
 npm run db:deploy       # prisma migrate deploy  (applies migrations)
@@ -107,6 +109,7 @@ That's it — sign in with a seeded account below (PIN `0000`).
    have one connection string, set both to it.)_
 2. **Add `AUTH_SECRET`** (Settings → Environment Variables, Production + Preview)
    = a long random string (`openssl rand -base64 32`).
+   Optionally add `GEMINI_API_KEY` too, for the AI End-of-Day drafts.
 3. **Redeploy.** The build runs
    `prisma generate && prisma migrate deploy && prisma db seed && next build`, so
    the tables **and the login accounts** are created automatically on deploy.
@@ -157,18 +160,16 @@ name buttons favors convenience for this internal tool over strong auth.)
 
 ## How it satisfies the brief
 
-- **Time-In field order** — editable 8:45 AM ET clock → Start-of-Day (required) →
-  Urgent (optional). See [TimeInModal.tsx](src/components/va/TimeInModal.tsx).
-- **Hours computed server-side** — [computeHoursWorked](src/lib/time.ts) is only
-  ever called inside server actions / the DB layer; the client total is never trusted.
-- **No double time-in / forgotten time-out** — enforced transactionally in
-  [timeEntries.ts](src/lib/timeEntries.ts) (`timeInForVa`, `flagStaleSessions`).
+- **Start of Day** — Start-of-Day (required, prefilled from the weekly plan) →
+  Urgent (optional). See [StartDayModal.tsx](src/components/va/StartDayModal.tsx).
+- **End-of-Day draft** — [gemini.ts](src/lib/gemini.ts); the text sent to Gemini is
+  read from the VA's own entry on the server, and any failure falls back to the
+  Start-of-Day text.
+- **No double Start of Day / forgotten End of Day** — enforced transactionally in
+  [timeEntries.ts](src/lib/timeEntries.ts) (`startDayForVa`, `flagStaleSessions`).
 - **Urgent highlighting only when filled** — [hasUrgent](src/lib/time.ts) treats
   blank/whitespace as no-flag; the dashboard card adds an orange ring + banner
   only for real content.
-- **Benchmark chips** — [classifyPunctuality](src/lib/time.ts) compares actual
-  punches to the 8:45–5:00 ET shift with a configurable ±grace window
-  (`BENCHMARK_GRACE_MINUTES`, default 5).
 - **Authorization on every read/write** — role guards in
   [session.ts](src/lib/session.ts); dashboard queries are scoped to
   `va.clientId === client.id` so a client only ever sees their own VAs' data.
@@ -177,20 +178,15 @@ name buttons favors convenience for this internal tool over strong auth.)
 
 ## Timezone design
 
-- `America/New_York` ("ET") is the anchor for all presets and the dashboard
-  benchmark. Luxon resolves EST vs EDT per date — no hardcoded offsets.
+- `America/New_York` ("ET") is the anchor for the work day, the weekly planner
+  and the 5:00 PM End-of-Day publish time. Luxon resolves EST vs EDT per date —
+  no hardcoded offsets.
 - **Store** every instant as **UTC**; **display** every instant in **ET**.
-- The editable time inputs are naive wall-clock strings; the server always
-  interprets them as **ET** (never the browser's zone) via `etWallClockToUtc`.
-- `workDate` is the **ET calendar day** (stored in a `DATE` column) so entries
-  near midnight land on the intended day.
-- Proof: [tests/time.test.ts](tests/time.test.ts) asserts the same 8:45 AM ET
-  wall-clock maps to **12:45 UTC in July (EDT)** and **13:45 UTC in January
-  (EST)**, and displays back as 8:45 AM in both cases.
-
-```bash
-npm test   # 22 passing assertions
-```
+- `workDate` is the **ET calendar day** so entries near midnight land on the
+  intended day.
+- Proof: [tests/time.test.ts](tests/time.test.ts) asserts 5:00 PM ET resolves to
+  **21:00 UTC in July (EDT)** and **22:00 UTC in January (EST)**, and that the
+  planner week follows the ET day around midnight and the DST change.
 
 ---
 
@@ -203,13 +199,13 @@ prisma/
 src/
   app/
     login/               # login page + login/logout server actions
-    va/                  # VA "my day" page + time-in/out/resolve actions
+    va/                  # VA "my day" page + start/end-of-day, plan, draft actions
     client/              # dashboard + /client/vas management + add-VA action
     layout.tsx           # fonts + global shell
     middleware.ts        # edge auth redirect for /va and /client
   components/            # Logo, TopNav, Modal, badges, VA & client UI
   lib/
-    time.ts              # timezone/hours/benchmark logic (unit-tested)
+    time.ts              # timezone + planner-week logic (unit-tested)
     session.ts           # JWT sessions + role guards
     password.ts          # bcrypt hashing
     prisma.ts            # Prisma client singleton

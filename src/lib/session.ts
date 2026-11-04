@@ -1,8 +1,10 @@
 import "server-only";
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SignJWT, jwtVerify } from "jose";
 import { env } from "./env";
+import { prisma } from "./prisma";
 import {
   SESSION_COOKIE_NAME,
   SESSION_COOKIE_PATH,
@@ -148,8 +150,26 @@ export async function destroySession(): Promise<void> {
   cookieStore.delete(COOKIE_NAME);
 }
 
-/** Return the current session user, or null if unauthenticated/invalid. */
-export async function getSession(): Promise<SessionUser | null> {
+/**
+ * Return the current session user, or null if unauthenticated/invalid — or if
+ * the account has since been removed (or deleted). That last check is a DB
+ * read, so a removed member loses access on their next request instead of when
+ * they close the browser. `cache` makes it one read per request, however many
+ * guards run.
+ */
+export const getSession = cache(async (): Promise<SessionUser | null> => {
+  const user = await verifySessionToken();
+  if (!user) return null;
+  // Outside verifySessionToken's try/catch on purpose: a DB hiccup should fail
+  // the request like any other DB error, not silently sign the user out.
+  const account = await prisma.user.findUnique({
+    where: { id: user.userId },
+    select: { removedAt: true },
+  });
+  return account && !account.removedAt ? user : null;
+});
+
+async function verifySessionToken(): Promise<SessionUser | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(COOKIE_NAME)?.value;
   if (!token) return null;

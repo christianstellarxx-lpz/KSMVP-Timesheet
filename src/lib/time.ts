@@ -11,11 +11,12 @@ import { DateTime } from "luxon";
  */
 export const ET_ZONE = "America/New_York" as const;
 
-/** The scheduled shift used as the dashboard benchmark and time-in/out presets. */
-export const SCHEDULE = {
-  timeIn: { hour: 9, minute: 0 }, // 9:00 AM ET
-  timeOut: { hour: 17, minute: 0 }, // 5:00 PM ET
-} as const;
+/**
+ * When a scheduled End-of-Day report becomes visible to admins (5:00 PM ET on
+ * the work date). The app no longer tracks clock times or hours — this is the
+ * only fixed time of day left in it.
+ */
+export const EOD_PUBLISH_TIME = { hour: 17, minute: 0 } as const;
 
 /** 24h {hour,minute} -> "9:00 AM" style label. */
 function to12Hour(hm: { hour: number; minute: number }): string {
@@ -24,13 +25,8 @@ function to12Hour(hm: { hour: number; minute: number }): string {
   return `${hour12}:${String(hm.minute).padStart(2, "0")} ${ampm}`;
 }
 
-// Display labels derived from SCHEDULE (single source of truth — no hardcoding).
-export const SCHEDULE_TIME_IN_LABEL = to12Hour(SCHEDULE.timeIn); // "9:00 AM"
-export const SCHEDULE_TIME_OUT_LABEL = to12Hour(SCHEDULE.timeOut); // "5:00 PM"
-export const SCHEDULE_SHIFT_LABEL = `${SCHEDULE_TIME_IN_LABEL} – ${SCHEDULE_TIME_OUT_LABEL} ET`;
-
-/** Hours credited for a full PTO / vacation day. */
-export const PTO_HOURS = 8;
+/** "5:00 PM" — derived from EOD_PUBLISH_TIME, never hardcoded in the UI. */
+export const EOD_PUBLISH_LABEL = to12Hour(EOD_PUBLISH_TIME);
 
 /** An ET calendar day as an ISO date string, e.g. "2026-07-07". */
 export type EtDateString = string;
@@ -68,47 +64,7 @@ export function storageDateToEtDateString(date: Date): EtDateString {
   return DateTime.fromJSDate(date, { zone: "utc" }).toISODate()!;
 }
 
-// ---------------------------------------------------------------------------
-// Wall-clock <-> UTC conversion for the editable time inputs
-// ---------------------------------------------------------------------------
-
-/**
- * A `<input type="datetime-local">` produces a naive wall-clock string with no
- * timezone, e.g. "2026-07-07T08:45". We always interpret that as ET wall-clock
- * (never the browser's zone) and convert to a UTC instant for storage.
- * Returns null if the string is not a valid datetime.
- */
-export function etWallClockToUtc(wallClock: string): Date | null {
-  const dt = DateTime.fromISO(wallClock, { zone: ET_ZONE });
-  return dt.isValid ? dt.toUTC().toJSDate() : null;
-}
-
-/**
- * Produce the wall-clock string (ET) to prefill a datetime-local input for a
- * scheduled preset on a given ET day. e.g. presetWallClock("2026-07-07", 8, 45)
- * -> "2026-07-07T08:45".
- */
-export function presetWallClock(
-  date: EtDateString,
-  hm: { hour: number; minute: number },
-): string {
-  const dt = DateTime.fromISO(date, { zone: ET_ZONE }).set({
-    hour: hm.hour,
-    minute: hm.minute,
-    second: 0,
-    millisecond: 0,
-  });
-  return dt.toFormat("yyyy-LL-dd'T'HH:mm");
-}
-
-/** The wall-clock string (ET) for an existing UTC instant, for editable inputs. */
-export function instantToEtWallClock(instant: Date): string {
-  return DateTime.fromJSDate(instant)
-    .setZone(ET_ZONE)
-    .toFormat("yyyy-LL-dd'T'HH:mm");
-}
-
-/** The scheduled shift instant (UTC) for a given ET day, e.g. 8:45 AM ET. */
+/** The UTC instant of a wall-clock time on a given ET day, e.g. 5:00 PM ET. */
 export function scheduledInstant(
   date: EtDateString,
   hm: { hour: number; minute: number },
@@ -149,71 +105,21 @@ export function formatEtDateTime(instant: Date): string {
 }
 
 // ---------------------------------------------------------------------------
-// Hours worked — computed server-side, never trusted from the client
+// Weekly planner
 // ---------------------------------------------------------------------------
 
 /**
- * Hours between two instants, rounded to the nearest whole hour so a standard
- * 9:00 AM–5:00 PM shift reads as 8. Returns null when inputs are
- * missing or non-positive (invalid range).
+ * The Mon–Fri ET dates the weekly planner covers. On a weekday that is the
+ * current week; on Saturday/Sunday it is the coming week, so a VA planning on
+ * the weekend lands on the right Monday.
  */
-export function computeHoursWorked(
-  timeIn: Date | null | undefined,
-  timeOut: Date | null | undefined,
-): number | null {
-  if (!timeIn || !timeOut) return null;
-  const ms = timeOut.getTime() - timeIn.getTime();
-  if (ms <= 0) return null;
-  return Math.round(ms / 3_600_000);
-}
-
-// ---------------------------------------------------------------------------
-// Benchmark / punctuality classification vs the scheduled shift
-// ---------------------------------------------------------------------------
-
-export type PunctualityChip = "ON_TIME" | "LATE_IN" | "EARLY_OUT";
-
-export interface Punctuality {
-  chips: PunctualityChip[];
-  /** minutes after scheduled time-in (positive = late); null if no time-in */
-  inDeltaMin: number | null;
-  /** minutes before scheduled time-out (positive = left early); null if no time-out */
-  outEarlyMin: number | null;
-}
-
-/**
- * Compare actual punches against the scheduled 9:00 AM–5:00 PM ET shift for the
- * entry's ET day. A grace window (minutes) makes tiny deltas read as on-time.
- * Presets are a benchmark, not a hard rule.
- */
-export function classifyPunctuality(
-  workDate: EtDateString,
-  timeIn: Date | null | undefined,
-  timeOut: Date | null | undefined,
-  graceMinutes = 5,
-): Punctuality {
-  const chips: PunctualityChip[] = [];
-  let inDeltaMin: number | null = null;
-  let outEarlyMin: number | null = null;
-
-  if (timeIn) {
-    const scheduledIn = scheduledInstant(workDate, SCHEDULE.timeIn);
-    inDeltaMin = Math.round((timeIn.getTime() - scheduledIn.getTime()) / 60_000);
-    if (inDeltaMin > graceMinutes) chips.push("LATE_IN");
-  }
-
-  if (timeOut) {
-    const scheduledOut = scheduledInstant(workDate, SCHEDULE.timeOut);
-    outEarlyMin = Math.round(
-      (scheduledOut.getTime() - timeOut.getTime()) / 60_000,
-    );
-    if (outEarlyMin > graceMinutes) chips.push("EARLY_OUT");
-  }
-
-  // Only claim "on time" once both punches exist and neither tripped a flag.
-  if (timeIn && timeOut && chips.length === 0) chips.push("ON_TIME");
-
-  return { chips, inDeltaMin, outEarlyMin };
+export function etPlanWeek(now: Date = new Date()): EtDateString[] {
+  const today = DateTime.fromJSDate(now).setZone(ET_ZONE).startOf("day");
+  const monday =
+    today.weekday >= 6
+      ? today.plus({ days: 8 - today.weekday })
+      : today.minus({ days: today.weekday - 1 });
+  return [0, 1, 2, 3, 4].map((d) => monday.plus({ days: d }).toISODate()!);
 }
 
 /** True when an urgent-need field carries real content (whitespace = none). */

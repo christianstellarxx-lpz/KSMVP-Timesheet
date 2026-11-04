@@ -32,6 +32,7 @@ export default async function LoginPage() {
   if (session) redirect(homePathForRole(session.role));
 
   const users = await prisma.user.findMany({
+    where: { removedAt: null },
     select: { id: true, name: true, title: true, role: true },
     orderBy: { name: "asc" },
   });

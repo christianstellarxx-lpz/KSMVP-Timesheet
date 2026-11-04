@@ -1,26 +1,21 @@
 import "server-only";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
-import { env } from "./env";
 import { VA_ROLES } from "./session";
 import { commentInclude, toCommentDTO, type CommentDTO } from "./comments";
 import {
-  classifyPunctuality,
-  formatEtTime,
   formatEtDateLong,
   storageDateToEtDateString,
   etDateStringToStorageDate,
   etToday,
   etDaysAgo,
   hasUrgent,
-  type PunctualityChip,
 } from "./time";
 
 export type SortKey =
   | "date_desc"
   | "date_asc"
   | "va"
-  | "hours_desc"
   | "urgent_first";
 
 /** Which day's entries the dashboard shows. Defaults to "today". */
@@ -42,14 +37,10 @@ export interface DashboardEntry {
   workDateLabel: string;
   status: "OPEN" | "CLOSED" | "INCOMPLETE";
   entryType: "WORK" | "PTO";
-  timeInLabel: string | null;
-  timeOutLabel: string | null;
-  hoursWorked: number | null;
   startOfDayTasks: string;
   endOfDayTasks: string | null;
   urgentNeed: string | null;
   hasUrgent: boolean;
-  chips: PunctualityChip[];
   comments: CommentDTO[];
 }
 
@@ -60,7 +51,6 @@ export interface DashboardData {
     total: number;
     urgentCount: number;
     incompleteCount: number;
-    totalHours: number;
   };
   filters: DashboardFilters;
 }
@@ -80,7 +70,6 @@ export function parseFilters(
   const sort: SortKey =
     sortRaw === "date_asc" ||
     sortRaw === "va" ||
-    sortRaw === "hours_desc" ||
     sortRaw === "urgent_first"
       ? sortRaw
       : "date_desc";
@@ -110,7 +99,7 @@ export function parseFilters(
   };
 }
 
-/** Permanently delete a VA's time entry (and its comments, via cascade). */
+/** Permanently delete a VA's daily entry (and its comments, via cascade). */
 export async function deleteTimeEntry(entryId: string): Promise<void> {
   await prisma.timeEntry.deleteMany({ where: { id: entryId } });
 }
@@ -126,15 +115,18 @@ export async function clearUrgent(entryId: string): Promise<void> {
 export async function getDashboardData(
   filters: DashboardFilters,
 ): Promise<DashboardData> {
-  const grace = env.benchmarkGraceMinutes;
-
-  // Org-wide: every team member who has a VA dashboard.
-  const vas = await prisma.user.findMany({
+  // Org-wide: every team member who has a VA dashboard. Removed members leave
+  // the filter dropdown, but their past entries still show and their
+  // "View activity" link (Team page) still filters to them.
+  const everyVa = await prisma.user.findMany({
     where: { role: { in: VA_ROLES } },
-    select: { id: true, name: true },
+    select: { id: true, name: true, removedAt: true },
     orderBy: { name: "asc" },
   });
-  const vaIds = new Set(vas.map((v) => v.id));
+  const vas = everyVa
+    .filter((v) => !v.removedAt)
+    .map(({ id, name }) => ({ id, name }));
+  const vaIds = new Set(everyVa.map((v) => v.id));
 
   const where: Prisma.TimeEntryWhereInput = {
     va: { role: { in: VA_ROLES } },
@@ -144,7 +136,7 @@ export async function getDashboardData(
     where.vaId = filters.vaId;
   }
   // Single-day view: entries whose ET work date matches the resolved date.
-  // The entry itself (start-of-day, times) is always shown; only a scheduled
+  // The Start of Day is always shown; only a scheduled
   // End-of-Day report is masked until its publish time — handled below.
   where.workDate = etDateStringToStorageDate(filters.date);
   if (filters.urgentOnly) {
@@ -160,11 +152,10 @@ export async function getDashboardData(
   const entries: DashboardEntry[] = rows.map((r) => {
     const workDate = storageDateToEtDateString(r.workDate);
     // A scheduled End-of-Day report stays hidden until publishAt (5 PM ET).
-    // To keep the scheduling invisible to admins, the whole clock-out is masked
-    // and the entry is presented exactly like an ordinary in-progress session
-    // (still OPEN, no time-out, no hours, "Still in progress" report).
+    // To keep the scheduling invisible to admins, the entry is presented
+    // exactly like an ordinary in-progress day (still OPEN, "Still in
+    // progress" report) until then.
     const scheduled = r.publishAt != null && r.publishAt.getTime() > now;
-    const timeOut = scheduled ? null : r.timeOut;
     return {
       id: r.id,
       vaId: r.vaId,
@@ -173,15 +164,10 @@ export async function getDashboardData(
       workDateLabel: formatEtDateLong(workDate),
       status: scheduled ? "OPEN" : (r.status as DashboardEntry["status"]),
       entryType: r.entryType as DashboardEntry["entryType"],
-      timeInLabel: r.timeIn ? formatEtTime(r.timeIn) : null,
-      timeOutLabel: timeOut ? formatEtTime(timeOut) : null,
-      hoursWorked:
-        scheduled || r.hoursWorked == null ? null : Number(r.hoursWorked),
       startOfDayTasks: r.startOfDayTasks,
       endOfDayTasks: scheduled ? null : r.endOfDayTasks,
       urgentNeed: r.urgentNeed,
       hasUrgent: hasUrgent(r.urgentNeed),
-      chips: classifyPunctuality(workDate, r.timeIn, timeOut, grace).chips,
       comments: r.comments.map(toCommentDTO),
     };
   });
@@ -192,10 +178,6 @@ export async function getDashboardData(
     total: entries.length,
     urgentCount: entries.filter((e) => e.hasUrgent).length,
     incompleteCount: entries.filter((e) => e.status === "INCOMPLETE").length,
-    totalHours:
-      Math.round(
-        entries.reduce((sum, e) => sum + (e.hoursWorked ?? 0), 0) * 100,
-      ) / 100,
   };
 
   return { vas, entries, stats, filters };
@@ -218,11 +200,6 @@ function sortEntries(entries: DashboardEntry[], sort: SortKey): void {
         (a, b) =>
           a.vaName.localeCompare(b.vaName) ||
           b.workDate.localeCompare(a.workDate),
-      );
-      break;
-    case "hours_desc":
-      entries.sort(
-        (a, b) => (b.hoursWorked ?? -1) - (a.hoursWorked ?? -1) || byDateDesc(a, b),
       );
       break;
     case "urgent_first":

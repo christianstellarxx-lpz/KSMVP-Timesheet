@@ -3,23 +3,18 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { commentInclude, toCommentDTO, type CommentDTO } from "./comments";
 import {
-  SCHEDULE,
-  PTO_HOURS,
+  EOD_PUBLISH_TIME,
   etToday,
   etDateStringToStorageDate,
   storageDateToEtDateString,
-  etWallClockToUtc,
-  presetWallClock,
-  instantToEtWallClock,
   scheduledInstant,
   formatEtTime,
   formatEtDateLong,
-  computeHoursWorked,
   hasUrgent,
 } from "./time";
 import type {
-  TimeInInput,
-  TimeOutInput,
+  StartDayInput,
+  EndDayInput,
   ResolveStaleInput,
   PtoInput,
   UpdateTaskInput,
@@ -29,18 +24,19 @@ export type MutationResult =
   | { ok: true }
   | { ok: false; message: string };
 
-/** Serializable view of a time entry for client components. */
+/**
+ * Serializable view of a daily report for client components.
+ *
+ * The app tracks what a VA worked on, not when: no clock times or hours. The
+ * old `timeIn` / `timeOut` / `hoursWorked` columns are still on TimeEntry so
+ * past rows keep their data, but nothing writes or shows them any more.
+ */
 export interface EntryDTO {
   id: string;
   workDate: string;
   workDateLabel: string;
   status: "OPEN" | "CLOSED" | "INCOMPLETE";
   entryType: "WORK" | "PTO";
-  timeInLabel: string | null;
-  timeInWallClock: string | null;
-  timeInISO: string | null;
-  timeOutLabel: string | null;
-  hoursWorked: number | null;
   startOfDayTasks: string;
   endOfDayTasks: string | null;
   urgentNeed: string | null;
@@ -65,16 +61,14 @@ export interface VaDayState {
   todayLabel: string;
   /** Today's entry, whatever its status (OPEN active session, or CLOSED summary). */
   todayEntry: EntryDTO | null;
-  /** Prior-day sessions flagged INCOMPLETE that still need a time-out. */
+  /** Prior days flagged INCOMPLETE that still need an End-of-Day report. */
   stale: EntryDTO[];
   /** Entries that have admin feedback, most recent first. */
   feedback: FeedbackEntryDTO[];
   /** How many received comments the VA hasn't seen yet (drives the notification). */
   unreadCommentCount: number;
-  presets: {
-    timeInWallClock: string; // today @ 9:00 AM ET
-    timeOutWallClock: string; // today @ 5:00 PM ET
-  };
+  /** Today's tasks from the weekly planner — prefills Start of Day. */
+  todayPlan: string | null;
 }
 
 function toDTO(entry: {
@@ -82,9 +76,6 @@ function toDTO(entry: {
   workDate: Date;
   status: string;
   entryType: string;
-  timeIn: Date | null;
-  timeOut: Date | null;
-  hoursWorked: unknown;
   startOfDayTasks: string;
   endOfDayTasks: string | null;
   urgentNeed: string | null;
@@ -99,11 +90,6 @@ function toDTO(entry: {
     workDateLabel: formatEtDateLong(workDate),
     status: entry.status as EntryDTO["status"],
     entryType: entry.entryType as EntryDTO["entryType"],
-    timeInLabel: entry.timeIn ? formatEtTime(entry.timeIn) : null,
-    timeInWallClock: entry.timeIn ? instantToEtWallClock(entry.timeIn) : null,
-    timeInISO: entry.timeIn ? entry.timeIn.toISOString() : null,
-    timeOutLabel: entry.timeOut ? formatEtTime(entry.timeOut) : null,
-    hoursWorked: entry.hoursWorked != null ? Number(entry.hoursWorked) : null,
     startOfDayTasks: entry.startOfDayTasks,
     endOfDayTasks: entry.endOfDayTasks,
     urgentNeed: entry.urgentNeed,
@@ -138,7 +124,7 @@ function isTransientDbError(e: unknown): boolean {
  * transient connectivity errors. The callback must be idempotent — it re-runs
  * on retry — which ours are (they re-check state before writing).
  */
-async function withTx<T>(
+export async function withTx<T>(
   fn: (tx: Prisma.TransactionClient) => Promise<T>,
 ): Promise<T> {
   const options = { maxWait: 8000, timeout: 15000 };
@@ -157,8 +143,8 @@ async function withTx<T>(
 }
 
 /**
- * Safeguard: mark any of this VA's OPEN sessions from a *previous* ET day as
- * INCOMPLETE (auto-review needed). Never fabricates a time-out or hours.
+ * Safeguard: mark any of this VA's OPEN days from a *previous* ET day as
+ * INCOMPLETE — a Start of Day with no End-of-Day report. Never invents a report.
  */
 export async function flagStaleSessions(vaId: string): Promise<void> {
   const todayStorage = etDateStringToStorageDate(etToday());
@@ -175,7 +161,7 @@ export async function getVaDayState(vaId: string): Promise<VaDayState> {
   const today = etToday();
   const todayStorage = etDateStringToStorageDate(today);
 
-  const [staleRows, todayEntry, commentedRows] = await Promise.all([
+  const [staleRows, todayEntry, commentedRows, todayPlan] = await Promise.all([
     prisma.timeEntry.findMany({
       where: { vaId, status: "INCOMPLETE" },
       orderBy: { workDate: "desc" },
@@ -192,6 +178,10 @@ export async function getVaDayState(vaId: string): Promise<VaDayState> {
       include: commentInclude,
       orderBy: { workDate: "desc" },
       take: 20,
+    }),
+    prisma.dayPlan.findUnique({
+      where: { vaId_workDate: { vaId, workDate: todayStorage } },
+      select: { startOfDayTasks: true },
     }),
   ]);
 
@@ -218,23 +208,16 @@ export async function getVaDayState(vaId: string): Promise<VaDayState> {
     stale: staleRows.map(toDTO),
     feedback,
     unreadCommentCount,
-    presets: {
-      timeInWallClock: presetWallClock(today, SCHEDULE.timeIn),
-      timeOutWallClock: presetWallClock(today, SCHEDULE.timeOut),
-    },
+    todayPlan: todayPlan?.startOfDayTasks ?? null,
   };
 }
 
-/** Clock in: creates today's OPEN entry, guarding against duplicates. */
-export async function timeInForVa(
+/** Start of Day: creates today's OPEN entry, guarding against duplicates. */
+export async function startDayForVa(
   vaId: string,
-  input: TimeInInput,
+  input: StartDayInput,
 ): Promise<MutationResult> {
-  const timeIn = etWallClockToUtc(input.timeInWallClock);
-  if (!timeIn) return { ok: false, message: "Enter a valid time-in." };
-
-  const today = etToday();
-  const workDate = etDateStringToStorageDate(today);
+  const workDate = etDateStringToStorageDate(etToday());
 
   try {
     await withTx(async (tx) => {
@@ -250,8 +233,8 @@ export async function timeInForVa(
       if (existingToday) {
         throw new Error(
           existingToday.status === "OPEN"
-            ? "You already have an open session today. Time out to close it."
-            : "You've already logged a session for today.",
+            ? "You’ve already sent today’s Start of Day. Send your End of Day when you’re done."
+            : "You’ve already logged today.",
         );
       }
 
@@ -260,7 +243,7 @@ export async function timeInForVa(
       });
       if (openElsewhere) {
         throw new Error(
-          "You have an unresolved open session. Close it before starting a new day.",
+          "You have an unfinished day. Send its End-of-Day report before starting a new one.",
         );
       }
 
@@ -268,7 +251,6 @@ export async function timeInForVa(
         data: {
           vaId,
           workDate,
-          timeIn,
           startOfDayTasks: input.startOfDayTasks,
           urgentNeed: input.urgentNeed ?? null,
           status: "OPEN",
@@ -282,46 +264,29 @@ export async function timeInForVa(
 }
 
 /**
- * Clock out: closes today's OPEN entry and computes hours worked.
- * `schedule` controls when the End-of-Day report becomes visible to admins:
- *  - true  ("Atake na"): held until 5:00 PM ET on the work date (auto-shows
- *    immediately if it's already past 5 PM).
- *  - false ("Enter now"): visible to admins right away.
- * Either way the start-of-day entry itself stays visible on the admin dashboard.
+ * End of Day: closes today's OPEN entry. The report is always scheduled — held
+ * from admins until 5:00 PM ET on the work date, and visible at once if it is
+ * already past that. The start-of-day part stays visible to admins throughout.
  */
-export async function timeOutForVa(
+export async function endDayForVa(
   vaId: string,
-  input: TimeOutInput,
-  schedule: boolean,
+  input: EndDayInput,
 ): Promise<MutationResult> {
-  const timeOut = etWallClockToUtc(input.timeOutWallClock);
-  if (!timeOut) return { ok: false, message: "Enter a valid time-out." };
-
   try {
     await withTx(async (tx) => {
       const active = await tx.timeEntry.findFirst({
         where: { vaId, status: "OPEN" },
       });
-      if (!active || !active.timeIn) {
-        throw new Error("No open session to close.");
-      }
-      if (timeOut.getTime() <= active.timeIn.getTime()) {
-        throw new Error("Time out must be after time in.");
-      }
-      const publishAt = schedule
-        ? scheduledInstant(
-            storageDateToEtDateString(active.workDate),
-            SCHEDULE.timeOut,
-          )
-        : null;
+      if (!active) throw new Error("There’s no open day to finish.");
       await tx.timeEntry.update({
         where: { id: active.id },
         data: {
-          timeOut,
           endOfDayTasks: input.endOfDayTasks,
-          hoursWorked: computeHoursWorked(active.timeIn, timeOut),
           status: "CLOSED",
-          publishAt,
+          publishAt: scheduledInstant(
+            storageDateToEtDateString(active.workDate),
+            EOD_PUBLISH_TIME,
+          ),
         },
       });
     });
@@ -331,14 +296,11 @@ export async function timeOutForVa(
   }
 }
 
-/** Resolve a forgotten (INCOMPLETE) session by supplying the real time-out. */
+/** Finish a past day that never got its End-of-Day report (INCOMPLETE). */
 export async function resolveStaleForVa(
   vaId: string,
   input: ResolveStaleInput,
 ): Promise<MutationResult> {
-  const timeOut = etWallClockToUtc(input.timeOutWallClock);
-  if (!timeOut) return { ok: false, message: "Enter a valid time-out." };
-
   try {
     await withTx(async (tx) => {
       const entry = await tx.timeEntry.findFirst({
@@ -348,20 +310,11 @@ export async function resolveStaleForVa(
           status: { in: ["INCOMPLETE", "OPEN"] },
         },
       });
-      if (!entry || !entry.timeIn) {
-        throw new Error("That session could not be found.");
-      }
-      if (timeOut.getTime() <= entry.timeIn.getTime()) {
-        throw new Error("Time out must be after time in.");
-      }
+      if (!entry) throw new Error("That day could not be found.");
+      // No publishAt: the work date is already over, so it shows at once.
       await tx.timeEntry.update({
         where: { id: entry.id },
-        data: {
-          timeOut,
-          endOfDayTasks: input.endOfDayTasks,
-          hoursWorked: computeHoursWorked(entry.timeIn, timeOut),
-          status: "CLOSED",
-        },
+        data: { endOfDayTasks: input.endOfDayTasks, status: "CLOSED" },
       });
     });
     return { ok: true };
@@ -370,7 +323,7 @@ export async function resolveStaleForVa(
   }
 }
 
-/** Log a PTO / vacation day (credited a full 8 hours, no clock times). */
+/** Log a PTO / vacation day — a day marker, no report needed. */
 export async function logPtoForVa(
   vaId: string,
   input: PtoInput,
@@ -393,10 +346,7 @@ export async function logPtoForVa(
           workDate,
           entryType: "PTO",
           status: "CLOSED",
-          hoursWorked: PTO_HOURS,
           startOfDayTasks: input.note ?? "Paid time off / Vacation",
-          timeIn: null,
-          timeOut: null,
         },
       });
     });
@@ -432,7 +382,23 @@ export async function updateEntryTextForVa(
   }
 }
 
-function messageFrom(e: unknown): string {
+/**
+ * The Start-of-Day text behind a VA's End-of-Day draft. Only an unfinished day
+ * (OPEN today, or INCOMPLETE from before) qualifies, and `vaId` in the where
+ * clause means a VA can only ever draft from their own entry.
+ */
+export async function getStartOfDayForDraft(
+  vaId: string,
+  entryId: string,
+): Promise<string | null> {
+  const entry = await prisma.timeEntry.findFirst({
+    where: { id: entryId, vaId, status: { in: ["OPEN", "INCOMPLETE"] } },
+    select: { startOfDayTasks: true },
+  });
+  return entry?.startOfDayTasks ?? null;
+}
+
+export function messageFrom(e: unknown): string {
   // Never surface raw DB/connectivity errors (e.g. Neon resuming) to the user.
   if (isTransientDbError(e)) {
     return "The server was waking up and didn’t respond in time. Please try again in a moment.";

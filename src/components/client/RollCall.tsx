@@ -2,7 +2,7 @@ import type { RollCallData, RollRow, RollState } from "@/lib/rollcall";
 import { RollCallActions } from "./RollCallActions";
 
 /**
- * The daily reporter's unique dashboard panel: today's clock-in/out status for
+ * The daily reporter's unique dashboard panel: today's Start/End-of-Day status for
  * every VA, a readiness indicator, and one-click email/copy of the summary that
  * goes to the admins.
  */
@@ -15,7 +15,7 @@ export function RollCall({ data }: { data: RollCallData }) {
             🗒️ Daily Roll Call
           </h2>
           <p className="text-xs text-[var(--text-muted)]">
-            {data.dateLabel} · today’s clock-in / clock-out status
+            {data.dateLabel} · today’s Start of Day / End of Day status
           </p>
         </div>
         <ReadyBadge ready={data.endReady} pending={data.counts.in + data.counts.incomplete} />
@@ -24,8 +24,8 @@ export function RollCall({ data }: { data: RollCallData }) {
       <div className="space-y-5 p-4 sm:p-6">
         {/* Counts */}
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-          <Count label="Clocked out" value={data.counts.out} tone="emerald" />
-          <Count label="Clocked in" value={data.counts.in} tone="blue" />
+          <Count label="End of Day in" value={data.counts.out} tone="emerald" />
+          <Count label="Start of Day in" value={data.counts.in} tone="blue" />
           <Count label="PTO" value={data.counts.pto} tone="yellow" />
           <Count label="Needs review" value={data.counts.incomplete} tone="orange" />
           <Count label="Not started" value={data.counts.none} tone="muted" />
@@ -56,10 +56,10 @@ export function RollCall({ data }: { data: RollCallData }) {
           <p className="max-w-xs text-xs text-[var(--text-muted)]">
             Opens Gmail in a new tab, pre-filled.{" "}
             {data.endReady
-              ? "Everyone’s clocked out — send the End-of-Day report."
+              ? "Everyone’s sent their End of Day — send the End-of-Day report."
               : data.startReady
-                ? "Everyone’s clocked in — send the Start-of-Day report."
-                : "Send the Start-of-Day report once everyone’s clocked in."}{" "}
+                ? "Everyone’s sent their Start of Day — send the Start-of-Day report."
+                : "Send the Start-of-Day report once everyone’s sent theirs."}{" "}
             Recipients: {data.adminEmails.join(", ")}
           </p>
           <RollCallActions
@@ -115,11 +115,11 @@ function Count({
 }
 
 const STATE_META: Record<RollState, { label: string; cls: string }> = {
-  OUT: { label: "Clocked out", cls: "bg-emerald-50 text-emerald-700" },
-  IN: { label: "Clocked in", cls: "bg-brand-blue-50 text-brand-blue-700" },
+  OUT: { label: "End of Day sent", cls: "bg-emerald-50 text-emerald-700" },
+  IN: { label: "Start of Day sent", cls: "bg-brand-blue-50 text-brand-blue-700" },
   PTO: { label: "PTO", cls: "bg-brand-yellow-100 text-brand-yellow-800" },
   INCOMPLETE: {
-    label: "No clock-out",
+    label: "No End of Day",
     cls: "bg-brand-orange-100 text-brand-orange-800",
   },
   NONE: { label: "Not started", cls: "bg-[var(--surface-muted)] text-[var(--text-muted)]" },
@@ -127,20 +127,5 @@ const STATE_META: Record<RollState, { label: string; cls: string }> = {
 
 function StatusChip({ row }: { row: RollRow }) {
   const meta = STATE_META[row.state];
-  const detail =
-    row.state === "OUT"
-      ? `${row.timeInLabel}–${row.timeOutLabel} · ${row.hoursWorked ?? 0}h`
-      : row.state === "IN" || row.state === "INCOMPLETE"
-        ? `in ${row.timeInLabel}`
-        : null;
-  return (
-    <div className="flex items-center gap-2">
-      {detail && (
-        <span className="text-xs tabular-nums text-[var(--text-muted)]">
-          {detail}
-        </span>
-      )}
-      <span className={`chip ${meta.cls}`}>{meta.label}</span>
-    </div>
-  );
+  return <span className={`chip ${meta.cls}`}>{meta.label}</span>;
 }

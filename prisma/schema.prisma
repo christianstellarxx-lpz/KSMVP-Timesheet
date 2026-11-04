@@ -33,6 +33,14 @@ model User {
   passwordHash String
   createdAt    DateTime @default(now())
 
+  // Set when an admin removes this member from the team (Team page). A removed
+  // member can't sign in (login list, PIN login and every session check skip
+  // them) and drops off the roster, roll call and Sales Desk recipients — but
+  // the row is kept, not deleted, so their reports and the feedback they wrote
+  // survive, and an admin can restore them. Hard-deleting would cascade all of
+  // that away, and the seed's upsert would re-create a seeded member anyway.
+  removedAt DateTime?
+
   // Reserved for future per-manager assignment; not used for scoping today
   // (the admin dashboard is org-wide). Kept as a self-relation.
   clientId String?
@@ -41,6 +49,9 @@ model User {
 
   // Time entries this user (as a VA) owns.
   timeEntries TimeEntry[] @relation("VAEntries")
+
+  // Weekly-planner rows this user (as a VA) wrote — prefill Start of Day.
+  dayPlans DayPlan[] @relation("DayPlans")
 
   // Comments this user (as an admin / VA admin) has written on entries.
   authoredComments Comment[] @relation("CommentAuthor")
@@ -72,9 +83,12 @@ model TimeEntry {
   // Used for grouping/sorting so entries near midnight land on the intended day.
   workDate DateTime
 
-  timeIn      DateTime? // UTC; null until set
-  timeOut     DateTime? // UTC; null until closed
-  hoursWorked Float? // computed on close; null while open/incomplete
+  // RETIRED (November 2026): the app no longer tracks clock times or hours —
+  // it records what a VA worked on, not when. Nothing writes or reads these
+  // any more; they are kept, not dropped, so past rows keep their history.
+  timeIn      DateTime?
+  timeOut     DateTime?
+  hoursWorked Float?
 
   startOfDayTasks String
   urgentNeed      String? // null / empty => no urgent flag
@@ -102,6 +116,25 @@ model TimeEntry {
   // Enforced at the application layer inside a transaction; see src/lib/timeEntries.ts.
   @@index([vaId, status])
   @@index([publishAt])
+}
+
+// One VA's planned tasks for one workday, written in the weekly planner
+// (usually on Monday, after the live meeting). It only PREFILLS that day's
+// Start of Day — the VA still reviews and submits it, which is what creates
+// the TimeEntry. Admins never see plans, only the submitted daily reports.
+model DayPlan {
+  id   String @id @default(cuid())
+  vaId String
+  va   User   @relation("DayPlans", fields: [vaId], references: [id], onDelete: Cascade)
+
+  // The ET calendar day (stored at UTC-midnight, like TimeEntry.workDate).
+  workDate        DateTime
+  startOfDayTasks String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([vaId, workDate])
 }
 
 // A note an admin (or VA admin) leaves on a VA's time entry. The VA sees it as

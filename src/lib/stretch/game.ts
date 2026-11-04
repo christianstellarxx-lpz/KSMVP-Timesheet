@@ -152,7 +152,7 @@ const SPENT_MESSAGE =
   "You’ve already used today’s ranked run.";
 
 const UNLOCK_MESSAGE =
-  "Time in and log your start-of-day task to play today’s run.";
+  "Send your Start of Day to play today’s run.";
 
 const RETRY_MESSAGE =
   "The server was waking up and didn’t respond in time. Please try again in a moment.";
@@ -164,8 +164,9 @@ const RETRY_MESSAGE =
 /**
  * Has this VA saved a start-of-day task for today?
  *
- * In practice `startOfDayTasks` is captured *at* time-in and `timeInSchema`
- * requires it, so today this is true whenever the time-in is — but the brief
+ * In practice `startOfDayTasks` is captured when the entry is created and
+ * `startDaySchema` requires it, so today this is true whenever the entry
+ * exists — but the brief
  * defines the unlock as both conditions, and checking them separately means the
  * gate stays correct if SOD ever becomes its own step. PTO days are excluded by
  * the clocked-in half of the gate, which requires a WORK entry.
@@ -524,14 +525,13 @@ export async function getDailyTally(
       },
       select: { userId: true },
     }),
-    // The unlock gate, applied across the team: a WORK time-in for today with a
+    // The unlock gate, applied across the team: a WORK entry for today with a
     // start-of-day task saved. PTO and unstarted shifts are excluded, so the
     // count means "can still play", not "has not played".
     prisma.timeEntry.findMany({
       where: {
         workDate: playedOn,
         entryType: "WORK",
-        timeIn: { not: null },
         va: { role: { in: VA_ROLES } },
       },
       select: { vaId: true, startOfDayTasks: true },

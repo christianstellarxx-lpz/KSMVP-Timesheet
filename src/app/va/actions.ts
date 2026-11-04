@@ -3,62 +3,110 @@
 import { revalidatePath } from "next/cache";
 import { requireVA } from "@/lib/session";
 import {
-  timeInForVa,
-  timeOutForVa,
+  startDayForVa,
+  endDayForVa,
   resolveStaleForVa,
   logPtoForVa,
   updateEntryTextForVa,
+  getStartOfDayForDraft,
 } from "@/lib/timeEntries";
+import { saveWeekPlan } from "@/lib/plans";
+import { draftEndOfDay } from "@/lib/gemini";
+import { check as rateLimit } from "@/lib/rateLimit";
 import { markCommentsReadForVa } from "@/lib/comments";
 import { submitGameScore, type SubmitScoreResult } from "@/lib/game";
 import { GAMES_ENABLED } from "@/lib/features";
 import {
-  timeInSchema,
-  timeOutSchema,
+  startDaySchema,
+  endDaySchema,
+  weekPlanSchema,
   resolveStaleSchema,
   ptoSchema,
   updateTaskSchema,
 } from "@/lib/validation";
 import { fieldErrorsFromZod, type FormState } from "@/lib/formState";
 
-export async function timeInAction(
+export async function startDayAction(
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
   const session = await requireVA();
-  const parsed = timeInSchema.safeParse({
-    timeInWallClock: formData.get("timeInWallClock"),
+  const parsed = startDaySchema.safeParse({
     startOfDayTasks: formData.get("startOfDayTasks"),
     urgentNeed: formData.get("urgentNeed") ?? "",
   });
   if (!parsed.success) return { fieldErrors: fieldErrorsFromZod(parsed.error) };
 
-  const result = await timeInForVa(session.userId, parsed.data);
+  const result = await startDayForVa(session.userId, parsed.data);
+  if (!result.ok) return { error: result.message };
+
+  revalidatePath("/va");
+  revalidatePath("/client");
+  return { ok: true };
+}
+
+/** End of Day — always scheduled to reach admins at 5:00 PM ET ("Sched"). */
+export async function endDayAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const session = await requireVA();
+  const parsed = endDaySchema.safeParse({
+    endOfDayTasks: formData.get("endOfDayTasks"),
+  });
+  if (!parsed.success) return { fieldErrors: fieldErrorsFromZod(parsed.error) };
+
+  const result = await endDayForVa(session.userId, parsed.data);
+  if (!result.ok) return { error: result.message };
+
+  revalidatePath("/va");
+  revalidatePath("/client");
+  return { ok: true };
+}
+
+/** Save the Mon–Fri weekly planner. Boxes are named `plan-YYYY-MM-DD`. */
+export async function saveWeekPlanAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const session = await requireVA();
+  const days = [...formData.entries()]
+    .filter(([key]) => key.startsWith("plan-"))
+    .map(([key, value]) => ({ date: key.slice(5), tasks: String(value) }));
+  const parsed = weekPlanSchema.safeParse(days);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Check your plan and try again." };
+  }
+
+  const result = await saveWeekPlan(session.userId, parsed.data);
   if (!result.ok) return { error: result.message };
 
   revalidatePath("/va");
   return { ok: true };
 }
 
-export async function timeOutAction(
-  _prev: FormState,
-  formData: FormData,
-): Promise<FormState> {
+export type EndOfDayDraft =
+  | { ok: true; text: string; ai: boolean }
+  | { ok: false; message: string };
+
+/** Generous for a real VA, tight enough that nobody drains the free quota. */
+const DRAFTS_PER_DAY = 10;
+
+/**
+ * The End-of-Day draft for one of the caller's unfinished days: Gemini's
+ * past-tense rewrite of that day's Start of Day, or the Start of Day itself
+ * when Gemini is unavailable or the daily draft cap is reached. The text sent
+ * to Gemini is read from the database, never taken from the client.
+ */
+export async function draftEndOfDayAction(entryId: string): Promise<EndOfDayDraft> {
   const session = await requireVA();
-  const parsed = timeOutSchema.safeParse({
-    timeOutWallClock: formData.get("timeOutWallClock"),
-    endOfDayTasks: formData.get("endOfDayTasks"),
-  });
-  if (!parsed.success) return { fieldErrors: fieldErrorsFromZod(parsed.error) };
+  const sod = await getStartOfDayForDraft(session.userId, String(entryId));
+  if (sod == null) return { ok: false, message: "That day could not be found." };
 
-  // Which button was clicked: "Atake na" holds the report until 5 PM ET;
-  // "Enter now" (default) makes it visible to admins immediately.
-  const schedule = formData.get("intent") === "schedule";
-  const result = await timeOutForVa(session.userId, parsed.data, schedule);
-  if (!result.ok) return { error: result.message };
-
-  revalidatePath("/va");
-  return { ok: true };
+  // shortcut: per-instance in-memory cap (see rateLimit.ts); move to a DB count if drafts get abused.
+  const limit = rateLimit(`eod-draft:${session.userId}`, DRAFTS_PER_DAY, 86_400_000);
+  const draft = limit.allowed ? await draftEndOfDay(sod) : null;
+  return { ok: true, text: draft ?? sod, ai: draft != null };
 }
 
 /** VA edits their own start-of-day tasks or end-of-day report in place. */
@@ -90,7 +138,6 @@ export async function resolveStaleAction(
   const session = await requireVA();
   const parsed = resolveStaleSchema.safeParse({
     entryId: formData.get("entryId"),
-    timeOutWallClock: formData.get("timeOutWallClock"),
     endOfDayTasks: formData.get("endOfDayTasks"),
   });
   if (!parsed.success) return { fieldErrors: fieldErrorsFromZod(parsed.error) };
@@ -99,6 +146,7 @@ export async function resolveStaleAction(
   if (!result.ok) return { error: result.message };
 
   revalidatePath("/va");
+  revalidatePath("/client");
   return { ok: true };
 }
 
@@ -135,7 +183,7 @@ export async function acknowledgeCommentsAction(): Promise<void> {
   revalidatePath("/va");
 }
 
-/** Record the VA's daily Flappy Bird score (one play per day, after clock-in). */
+/** Record the VA's daily Flappy Bird score (one play per day, after Start of Day). */
 export async function submitGameScoreAction(
   score: number,
 ): Promise<SubmitScoreResult> {

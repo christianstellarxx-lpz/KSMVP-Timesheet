@@ -5,27 +5,30 @@ import type { ActiveGamePromo } from "@/lib/leaderboards/registry";
 import Link from "next/link";
 import type { VaDayState, EntryDTO } from "@/lib/timeEntries";
 import type { NoticeDTO } from "@/lib/notices";
+import type { PlanDayDTO } from "@/lib/plans";
 import { NoticeInbox } from "@/components/NoticeInbox";
 import { UrgentBanner } from "@/components/UrgentBanner";
 import { StatusBadge } from "@/components/Badges";
-import { LiveClock } from "./LiveClock";
-import { TimeInModal } from "./TimeInModal";
-import { TimeOutModal } from "./TimeOutModal";
+import { StartDayModal } from "./StartDayModal";
+import { EndDayModal } from "./EndDayModal";
 import { ResolveStaleModal } from "./ResolveStaleModal";
 import { PtoModal } from "./PtoModal";
+import { WeekPlanModal } from "./WeekPlanModal";
 import { AdminFeedback } from "./AdminFeedback";
 import { EditableTask } from "./EditableTask";
-import { presetWallClock, SCHEDULE, SCHEDULE_SHIFT_LABEL } from "@/lib/time";
 
 export function VaDayClient({
   firstName,
   state,
+  weekPlan,
   notices,
   game,
   dismissNoticeAction,
 }: {
   firstName: string;
   state: VaDayState;
+  /** Mon–Fri planner days (this week, or next week on a weekend). */
+  weekPlan: PlanDayDTO[];
   notices: NoticeDTO[];
   /** This month's rotating game, resolved from GAME_ROTATION; null while games are off. */
   game: ActiveGamePromo | null;
@@ -40,11 +43,11 @@ export function VaDayClient({
       ? state.todayEntry
       : null;
 
-  const [modal, setModal] = useState<"in" | "out" | "pto" | null>(null);
+  const [modal, setModal] = useState<"start" | "end" | "pto" | "plan" | null>(null);
   const [resolveEntry, setResolveEntry] = useState<EntryDTO | null>(null);
   const [dismissedStale, setDismissedStale] = useState(false);
 
-  const gateTimeIn =
+  const gateStart =
     state.stale.length > 0 && !dismissedStale && !state.todayEntry;
 
   return (
@@ -57,13 +60,12 @@ export function VaDayClient({
           </h1>
           <p className="text-sm text-[var(--text-muted)]">{state.todayLabel}</p>
         </div>
-        <LiveClock />
       </div>
 
       {/* Sales Desk notices addressed to this VA */}
       <NoticeInbox notices={notices} dismissAction={dismissNoticeAction} />
 
-      {/* Stale / forgotten sessions */}
+      {/* Earlier days with a Start of Day but no End-of-Day report */}
       {state.stale.length > 0 && (
         <section className="card border-brand-orange-200 bg-brand-orange-50/40 p-4 sm:p-5">
           <div className="mb-3 flex items-start gap-2.5">
@@ -83,11 +85,11 @@ export function VaDayClient({
             </svg>
             <div>
               <h2 className="font-heading text-base font-bold text-brand-orange-800">
-                Unfinished session{state.stale.length > 1 ? "s" : ""}
+                Missing End-of-Day report{state.stale.length > 1 ? "s" : ""}
               </h2>
               <p className="text-sm text-brand-orange-900/80">
-                You clocked in but never clocked out. Set your finish time so
-                your hours are counted correctly.
+                You sent a Start of Day but no End of Day. Add the report so
+                your admins can see what you worked on.
               </p>
             </div>
           </div>
@@ -102,23 +104,19 @@ export function VaDayClient({
                   <span className="font-heading font-semibold text-[var(--text)]">
                     {entry.workDateLabel}
                   </span>
-                  <span className="text-[var(--text-muted)]">
-                    {" "}
-                    · in at {entry.timeInLabel} ET
-                  </span>
                 </div>
                 <button
                   type="button"
                   className="btn-action px-4 text-sm sm:min-h-[40px]"
                   onClick={() => setResolveEntry(entry)}
                 >
-                  Set time out
+                  Add End of Day
                 </button>
               </li>
             ))}
           </ul>
 
-          {gateTimeIn && (
+          {gateStart && (
             <button
               type="button"
               onClick={() => setDismissedStale(true)}
@@ -138,27 +136,38 @@ export function VaDayClient({
 
       {/* Primary action zone */}
       {active ? (
-        <ActiveSessionCard entry={active} onTimeOut={() => setModal("out")} />
+        <ActiveSessionCard entry={active} onEndDay={() => setModal("end")} />
       ) : ptoToday ? (
         <PtoDayCard entry={ptoToday} />
       ) : completed ? (
         <CompletedCard entry={completed} />
-      ) : gateTimeIn ? (
+      ) : gateStart ? (
         <div className="card p-6 text-center">
           <p className="text-sm text-[var(--text-muted)]">
-            Close your unfinished session above before starting a new day.
+            Add the missing End-of-Day report above before starting a new day.
           </p>
         </div>
       ) : (
-        <TimeInCard onTimeIn={() => setModal("in")} />
+        <StartDayCard
+          planned={!!state.todayPlan}
+          onStart={() => setModal("start")}
+        />
       )}
 
-      {/* Secondary action: PTO / vacation, always available */}
-      <div className="text-center">
+      {/* Secondary actions, always available */}
+      <div className="flex flex-col items-center justify-center gap-2 sm:flex-row">
+        <button
+          type="button"
+          onClick={() => setModal("plan")}
+          className="btn-ghost"
+        >
+          <span aria-hidden>🗓️</span>
+          Plan my week
+        </button>
         <button
           type="button"
           onClick={() => setModal("pto")}
-          className="btn-ghost mx-auto"
+          className="btn-ghost"
         >
           <span aria-hidden>🌴</span>
           Log PTO / Vacation day
@@ -209,27 +218,24 @@ export function VaDayClient({
           getGameState in app/va/page.tsx and render <FlappyGame> here. */}
 
       {/* Modals — mounted only while open so their form/action state resets. */}
-      {modal === "in" && (
-        <TimeInModal
+      {modal === "start" && (
+        <StartDayModal
           open
           onClose={() => setModal(null)}
-          presetWallClock={state.presets.timeInWallClock}
+          plannedTasks={state.todayPlan}
         />
       )}
-      {modal === "out" && active && (
-        <TimeOutModal
-          open
-          onClose={() => setModal(null)}
-          presetWallClock={state.presets.timeOutWallClock}
-          timeInLabel={active.timeInLabel}
-        />
+      {modal === "end" && active && (
+        <EndDayModal open onClose={() => setModal(null)} entryId={active.id} />
+      )}
+      {modal === "plan" && (
+        <WeekPlanModal open onClose={() => setModal(null)} days={weekPlan} />
       )}
       {resolveEntry && (
         <ResolveStaleModal
           open={!!resolveEntry}
           onClose={() => setResolveEntry(null)}
           entry={resolveEntry}
-          presetWallClock={presetWallClock(resolveEntry.workDate, SCHEDULE.timeOut)}
         />
       )}
       {modal === "pto" && (
@@ -250,17 +256,11 @@ function PtoDayCard({ entry }: { entry: EntryDTO }) {
         <span className="font-heading text-sm font-semibold text-brand-blue-700">
           🌴 PTO / Vacation day
         </span>
-        <span className="chip bg-brand-yellow-400 text-brand-blue-900">
-          8 hours
-        </span>
       </div>
       <div className="space-y-4 p-5 sm:p-6">
         <p className="text-sm text-[var(--text-muted)]">
-          You’re logged off today — enjoy your time off. This day counts as{" "}
-          <span className="font-heading font-bold text-[var(--text)]">
-            8 hours
-          </span>{" "}
-          of PTO on your client’s dashboard.
+          You’re off today — enjoy your time off. Your admins see this day as
+          PTO, so no reports are needed.
         </p>
         {entry.startOfDayTasks?.trim() &&
           entry.startOfDayTasks.trim() !== "Paid time off / Vacation" && (
@@ -276,7 +276,13 @@ function PtoDayCard({ entry }: { entry: EntryDTO }) {
   );
 }
 
-function TimeInCard({ onTimeIn }: { onTimeIn: () => void }) {
+function StartDayCard({
+  planned,
+  onStart,
+}: {
+  planned: boolean;
+  onStart: () => void;
+}) {
   return (
     <section className="card p-6 text-center sm:p-10">
       <p className="mb-1 font-heading text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">
@@ -287,14 +293,16 @@ function TimeInCard({ onTimeIn }: { onTimeIn: () => void }) {
       </h2>
       <button
         type="button"
-        onClick={onTimeIn}
+        onClick={onStart}
         className="btn-action btn-lg mx-auto w-full max-w-xs text-lg"
       >
-        <ClockIcon />
-        Time In
+        <ListIcon />
+        Start of Day
       </button>
       <p className="mt-4 text-xs text-[var(--text-muted)]">
-        Scheduled shift: {SCHEDULE_SHIFT_LABEL}
+        {planned
+          ? "Today’s tasks are ready from your weekly plan — just review and submit."
+          : "Tip: use “Plan my week” to write the whole week’s tasks once."}
       </p>
     </section>
   );
@@ -302,37 +310,21 @@ function TimeInCard({ onTimeIn }: { onTimeIn: () => void }) {
 
 function ActiveSessionCard({
   entry,
-  onTimeOut,
+  onEndDay,
 }: {
   entry: EntryDTO;
-  onTimeOut: () => void;
+  onEndDay: () => void;
 }) {
   return (
     <section className="card overflow-hidden">
       <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] bg-brand-blue-50/50 px-5 py-3 sm:px-6">
-        <div className="flex items-center gap-2">
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
-          </span>
-          <span className="font-heading text-sm font-semibold text-brand-blue-700">
-            Clocked in
-          </span>
-        </div>
+        <span className="font-heading text-sm font-semibold text-brand-blue-700">
+          Start of Day sent
+        </span>
         <StatusBadge status="OPEN" />
       </div>
 
       <div className="space-y-5 p-5 sm:p-6">
-        <div>
-          <p className="field-label mb-0">Time in</p>
-          <p className="font-heading text-2xl font-bold text-[var(--text)]">
-            {entry.timeInLabel}{" "}
-            <span className="text-sm font-semibold text-[var(--text-muted)]">
-              ET
-            </span>
-          </p>
-        </div>
-
         <EditableTask
           entryId={entry.id}
           field="START"
@@ -347,11 +339,11 @@ function ActiveSessionCard({
 
         <button
           type="button"
-          onClick={onTimeOut}
+          onClick={onEndDay}
           className="btn-action btn-lg w-full text-lg"
         >
-          <ClockIcon />
-          Time Out
+          <ListIcon />
+          End of Day
         </button>
       </div>
     </section>
@@ -386,20 +378,11 @@ function CompletedCard({ entry }: { entry: EntryDTO }) {
               />
             </svg>
             <span>
-              Atake na — your End-of-Day report reaches your client at{" "}
+              Scheduled — your End-of-Day report reaches your admins at{" "}
               <span className="font-semibold">{entry.publishAtLabel} ET</span>.
             </span>
           </p>
         )}
-        <div className="flex flex-wrap gap-x-10 gap-y-3">
-          <TimeStat label="Time in" value={`${entry.timeInLabel} ET`} />
-          <TimeStat label="Time out" value={`${entry.timeOutLabel} ET`} />
-          <TimeStat
-            label="Hours worked"
-            value={entry.hoursWorked != null ? String(entry.hoursWorked) : "—"}
-            accent
-          />
-        </div>
         {entry.hasUrgent && entry.urgentNeed && (
           <UrgentBanner text={entry.urgentNeed} />
         )}
@@ -424,35 +407,11 @@ function CompletedCard({ entry }: { entry: EntryDTO }) {
   );
 }
 
-function TimeStat({
-  label,
-  value,
-  accent = false,
-}: {
-  label: string;
-  value: string;
-  accent?: boolean;
-}) {
-  return (
-    <div>
-      <p className="field-label mb-0">{label}</p>
-      <p
-        className={`font-heading text-2xl font-bold ${
-          accent ? "text-brand-blue-600" : "text-[var(--text)]"
-        }`}
-      >
-        {value}
-      </p>
-    </div>
-  );
-}
-
-function ClockIcon() {
+function ListIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
       <path
-        d="M12 7v5l3 2"
+        d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"
         stroke="currentColor"
         strokeWidth="2"
         strokeLinecap="round"

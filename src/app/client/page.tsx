@@ -58,7 +58,7 @@ export default async function ClientDashboardPage({
           </h1>
           <p className="text-sm text-[var(--text-muted)]">
             {dayLabel} · {formatEtDateLong(filters.date)} — start-of-day and
-            end-of-day reports, all times in ET.
+            end-of-day reports.
           </p>
         </div>
         <Link href="/client/vas" className="btn-ghost self-start sm:self-auto">
@@ -67,13 +67,8 @@ export default async function ClientDashboardPage({
       </div>
 
       {/* Summary stats */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-3 gap-3">
         <StatTile label="Entries" value={data.stats.total} />
-        <StatTile
-          label="Hours logged"
-          value={data.stats.totalHours}
-          accent="blue"
-        />
         <StatTile
           label="Urgent"
           value={data.stats.urgentCount}

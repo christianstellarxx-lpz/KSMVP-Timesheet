@@ -20,10 +20,12 @@ export const env = {
   get authSecret() {
     return required("AUTH_SECRET");
   },
-  /** Grace window (minutes) for the on-time / late benchmark chips. */
-  get benchmarkGraceMinutes() {
-    const raw = process.env.BENCHMARK_GRACE_MINUTES;
-    const n = raw ? Number.parseInt(raw, 10) : NaN;
-    return Number.isFinite(n) && n >= 0 ? n : 5;
+  /** Optional. Without it, End-of-Day drafts fall back to the Start-of-Day text. */
+  get geminiApiKey(): string | null {
+    return process.env.GEMINI_API_KEY?.trim() || null;
+  },
+  /** Which Gemini model writes the End-of-Day draft. */
+  get geminiModel(): string {
+    return process.env.GEMINI_MODEL?.trim() || "gemini-3.5-flash-lite";
   },
 };

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAdmin, isFullAdmin } from "@/lib/session";
-import { addTeamMember } from "@/lib/vas";
+import { addTeamMember, removeTeamMember, restoreTeamMember } from "@/lib/vas";
 import { addComment, deleteOwnComment } from "@/lib/comments";
 import { deleteTimeEntry, clearUrgent } from "@/lib/dashboard";
 import { addMemberSchema, commentSchema } from "@/lib/validation";
@@ -90,4 +90,25 @@ export async function deleteCommentAction(formData: FormData): Promise<void> {
   await deleteOwnComment(commentId, session.userId);
   revalidatePath("/client");
   revalidatePath("/va");
+}
+
+/**
+ * Remove a VA / co-admin from the team (soft remove — history is kept). Full
+ * admins only, like every other destructive action; you can't remove yourself.
+ */
+export async function removeMemberAction(formData: FormData): Promise<void> {
+  const session = await requireAdmin();
+  if (!isFullAdmin(session.role)) return;
+  await removeTeamMember(session.userId, String(formData.get("memberId") ?? ""));
+  revalidatePath("/client/vas");
+  revalidatePath("/client");
+}
+
+/** Restore a removed member. Full admins only. */
+export async function restoreMemberAction(formData: FormData): Promise<void> {
+  const session = await requireAdmin();
+  if (!isFullAdmin(session.role)) return;
+  await restoreTeamMember(String(formData.get("memberId") ?? ""));
+  revalidatePath("/client/vas");
+  revalidatePath("/client");
 }

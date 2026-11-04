@@ -1,14 +1,21 @@
 import Link from "next/link";
-import { requireAdmin, roleLabel, type Role } from "@/lib/session";
-import { getTeamMembers } from "@/lib/vas";
+import { requireAdmin, isFullAdmin, roleLabel, type Role } from "@/lib/session";
+import { getTeamMembers, type TeamMember } from "@/lib/vas";
 import { AddVaButton } from "@/components/client/AddVaButton";
+import { DeleteButton } from "@/components/client/DeleteButton";
+import { removeMemberAction, restoreMemberAction } from "@/app/client/actions";
 
 export const metadata = { title: "Team — KSMVP VA Tasks" };
 export const dynamic = "force-dynamic";
 
 export default async function TeamPage() {
-  await requireAdmin();
-  const members = await getTeamMembers();
+  const session = await requireAdmin();
+  const all = await getTeamMembers();
+  const members = all.filter((m) => !m.removedOnLabel);
+  const removed = all.filter((m) => m.removedOnLabel);
+  // Removing / restoring is destructive-class: full admins only, never yourself.
+  const canManage = isFullAdmin(session.role);
+  const canRemove = (m: TeamMember) => canManage && m.id !== session.userId;
 
   return (
     <div className="space-y-6">
@@ -49,14 +56,17 @@ export default async function TeamPage() {
               <span className="text-[var(--text-muted)]">
                 {m.hasVaDashboard ? `${m.entryCount} entries` : "—"}
               </span>
-              {m.hasVaDashboard && (
-                <Link
-                  href={`/client?vaId=${m.id}`}
-                  className="font-heading font-medium text-brand-blue-700 hover:underline"
-                >
-                  View activity
-                </Link>
-              )}
+              <div className="flex items-center gap-3">
+                {m.hasVaDashboard && (
+                  <Link
+                    href={`/client?vaId=${m.id}`}
+                    className="font-heading font-medium text-brand-blue-700 hover:underline"
+                  >
+                    View activity
+                  </Link>
+                )}
+                {canRemove(m) && <RemoveButton member={m} />}
+              </div>
             </div>
           </li>
         ))}
@@ -115,23 +125,86 @@ export default async function TeamPage() {
                   {m.hasVaDashboard ? m.entryCount : "—"}
                 </td>
                 <td className="px-4 py-3 text-right sm:px-5">
-                  {m.hasVaDashboard ? (
-                    <Link
-                      href={`/client?vaId=${m.id}`}
-                      className="font-heading text-sm font-medium text-brand-blue-700 hover:underline"
-                    >
-                      View activity
-                    </Link>
-                  ) : (
-                    <span className="text-xs text-[var(--text-muted)]">—</span>
-                  )}
+                  <div className="flex items-center justify-end gap-3">
+                    {m.hasVaDashboard ? (
+                      <Link
+                        href={`/client?vaId=${m.id}`}
+                        className="font-heading text-sm font-medium text-brand-blue-700 hover:underline"
+                      >
+                        View activity
+                      </Link>
+                    ) : (
+                      <span className="text-xs text-[var(--text-muted)]">—</span>
+                    )}
+                    {canRemove(m) && <RemoveButton member={m} />}
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {removed.length > 0 && (
+        <section className="space-y-3">
+          <div>
+            <h2 className="font-heading text-base font-bold text-brand-blue-700">
+              Removed members
+            </h2>
+            <p className="text-sm text-[var(--text-muted)]">
+              They can’t sign in. Their past reports and feedback are kept
+              {canManage ? " — restore someone to give them access again." : "."}
+            </p>
+          </div>
+          <ul className="divide-y divide-[var(--border)] rounded-card border border-[var(--border)] bg-white shadow-card">
+            {removed.map((m) => (
+              <li
+                key={m.id}
+                className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 sm:px-5"
+              >
+                <div className="min-w-0">
+                  <p className="font-heading text-sm font-semibold text-[var(--text)]">
+                    {m.name}
+                  </p>
+                  <p className="text-xs text-[var(--text-muted)]">
+                    {roleLabel(m.role)} · removed {m.removedOnLabel}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  {m.hasVaDashboard && (
+                    <Link
+                      href={`/client?vaId=${m.id}`}
+                      className="font-heading text-sm font-medium text-brand-blue-700 hover:underline"
+                    >
+                      View activity
+                    </Link>
+                  )}
+                  {canManage && (
+                    <form action={restoreMemberAction}>
+                      <input type="hidden" name="memberId" value={m.id} />
+                      <button type="submit" className="btn-ghost text-sm">
+                        Restore
+                      </button>
+                    </form>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
+  );
+}
+
+function RemoveButton({ member }: { member: TeamMember }) {
+  return (
+    <DeleteButton
+      action={removeMemberAction}
+      fields={{ memberId: member.id }}
+      label={`Remove ${member.name} from the team`}
+      confirmText={`Remove ${member.name} from the team? They won’t be able to sign in. Their past reports and feedback stay, and you can restore them later under Removed members.`}
+    />
   );
 }
 

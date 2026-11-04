@@ -15,7 +15,7 @@ export interface LeaderRow {
 }
 
 export interface GameState {
-  /** The user clocked in (a WORK time-in) today — required to play. */
+  /** The user sent today's Start of Day (a WORK entry) — required to play. */
   clockedInToday: boolean;
   /** They've already used today's single play. */
   hasPlayedToday: boolean;
@@ -56,19 +56,21 @@ async function getLeaderboard(): Promise<LeaderRow[]> {
 }
 
 /**
- * Whether the user has a WORK time-in for today (i.e. they clocked in).
+ * Whether the user has a WORK entry for today, i.e. they sent their Start of
+ * Day. (The name predates November 2026, when clock-in/out was removed and the
+ * Start of Day became the day's opening step.)
  *
  * This is the shared daily-attempt gate for every dashboard game — the Word
- * Guess game imports it too, so "one try a day, after Time In" is defined in
- * exactly one place.
+ * Guess game imports it too, so "one try a day, after Start of Day" is defined
+ * in exactly one place.
  */
 export async function isClockedInToday(userId: string): Promise<boolean> {
   const todayStorage = etDateStringToStorageDate(etToday());
   const entry = await prisma.timeEntry.findFirst({
     where: { vaId: userId, workDate: todayStorage },
-    select: { entryType: true, timeIn: true },
+    select: { entryType: true },
   });
-  return !!entry && entry.entryType === "WORK" && entry.timeIn != null;
+  return !!entry && entry.entryType === "WORK";
 }
 
 /** Everything the VA dashboard game panel needs. */
@@ -109,7 +111,7 @@ export async function submitGameScore(
   );
 
   if (!(await isClockedInToday(userId))) {
-    return { ok: false, message: "Clock in first to play today's game." };
+    return { ok: false, message: "Send your Start of Day first to play today's game." };
   }
 
   const playDate = etDateStringToStorageDate(etToday());

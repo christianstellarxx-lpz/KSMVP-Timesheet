@@ -3,20 +3,20 @@
 import { useActionState, useEffect } from "react";
 import { Modal } from "@/components/Modal";
 import { SubmitButton } from "@/components/SubmitButton";
-import { timeInAction } from "@/app/va/actions";
+import { startDayAction } from "@/app/va/actions";
 import { emptyFormState } from "@/lib/formState";
-import { SCHEDULE_TIME_IN_LABEL } from "@/lib/time";
 
-export function TimeInModal({
+export function StartDayModal({
   open,
   onClose,
-  presetWallClock,
+  plannedTasks,
 }: {
   open: boolean;
   onClose: () => void;
-  presetWallClock: string;
+  /** Today's tasks from the weekly planner, if any. */
+  plannedTasks: string | null;
 }) {
-  const [state, formAction] = useActionState(timeInAction, emptyFormState);
+  const [state, formAction] = useActionState(startDayAction, emptyFormState);
 
   useEffect(() => {
     if (state.ok) onClose();
@@ -27,8 +27,8 @@ export function TimeInModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Time In"
-      description={`Start your workday. The clock is preset to ${SCHEDULE_TIME_IN_LABEL} ET — edit it to your actual start time.`}
+      title="Start of Day"
+      description="Share what you’re working on today. Your admins see it as soon as you submit."
     >
       <form action={formAction} className="space-y-5" noValidate>
         {state.error && (
@@ -40,29 +40,7 @@ export function TimeInModal({
           </p>
         )}
 
-        {/* 1. Time In clock (editable ET preset) */}
-        <div>
-          <label htmlFor="timeInWallClock" className="field-label">
-            Time In <span className="text-[var(--text-muted)]">(ET)</span>
-          </label>
-          <input
-            id="timeInWallClock"
-            name="timeInWallClock"
-            type="datetime-local"
-            defaultValue={presetWallClock}
-            required
-            className="field-input"
-            aria-invalid={!!state.fieldErrors?.timeInWallClock}
-          />
-          {state.fieldErrors?.timeInWallClock && (
-            <p className="field-error">{state.fieldErrors.timeInWallClock}</p>
-          )}
-          <p className="field-hint">
-            Recorded in Eastern Time regardless of your device’s timezone.
-          </p>
-        </div>
-
-        {/* 2. Start-of-Day Tasks (required) */}
+        {/* 1. Start-of-Day Tasks (required) — prefilled from the weekly plan */}
         <div>
           <label htmlFor="startOfDayTasks" className="field-label">
             Start-of-Day Tasks <span className="text-brand-orange-600">*</span>
@@ -71,7 +49,8 @@ export function TimeInModal({
             id="startOfDayTasks"
             name="startOfDayTasks"
             required
-            rows={4}
+            rows={6}
+            defaultValue={plannedTasks ?? ""}
             className="field-textarea"
             placeholder="What do you plan to work on today?"
             aria-invalid={!!state.fieldErrors?.startOfDayTasks}
@@ -79,9 +58,14 @@ export function TimeInModal({
           {state.fieldErrors?.startOfDayTasks && (
             <p className="field-error">{state.fieldErrors.startOfDayTasks}</p>
           )}
+          {plannedTasks && (
+            <p className="field-hint">
+              Prefilled from your weekly plan. Review it before you submit.
+            </p>
+          )}
         </div>
 
-        {/* 3. Urgent Need / Support (optional) */}
+        {/* 2. Urgent Need / Support (optional) */}
         <div>
           <label htmlFor="urgentNeed" className="field-label">
             Urgent Need / Support{" "}
@@ -106,11 +90,8 @@ export function TimeInModal({
           <button type="button" onClick={onClose} className="btn-ghost">
             Cancel
           </button>
-          <SubmitButton
-            className="btn-action px-6"
-            pendingLabel="Starting…"
-          >
-            Start my day
+          <SubmitButton className="btn-action px-6" pendingLabel="Submitting…">
+            Submit Start of Day
           </SubmitButton>
         </div>
       </form>

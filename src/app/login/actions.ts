@@ -26,7 +26,7 @@ export async function quickLoginAction(
 
   const { userId, pin } = parsed.data;
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) return { error: "Account not found." };
+  if (!user || user.removedAt) return { error: "Account not found." };
 
   const ok = await verifyPassword(pin, user.passwordHash);
   if (!ok) return { error: "Incorrect PIN. Please try again." };

@@ -5,12 +5,15 @@ import {
   etToday,
   etDateStringToStorageDate,
   formatEtDateLong,
-  formatEtTime,
 } from "./time";
 
 /** Public URL of the app, included in the daily email so admins can open it. */
 const APP_LOGIN_URL = "https://ksmvp-task.vercel.app/login";
 
+/**
+ * OUT = End of Day sent, IN = Start of Day sent (no End of Day yet),
+ * INCOMPLETE = a past day still missing its End of Day, NONE = nothing sent.
+ */
 export type RollState = "OUT" | "IN" | "PTO" | "INCOMPLETE" | "NONE";
 
 export interface RollRow {
@@ -18,9 +21,6 @@ export interface RollRow {
   name: string;
   title: string;
   state: RollState;
-  timeInLabel: string | null;
-  timeOutLabel: string | null;
-  hoursWorked: number | null;
 }
 
 export interface RollEmail {
@@ -42,9 +42,9 @@ export interface RollCallData {
     incomplete: number;
     none: number;
   };
-  /** Everyone who's working has clocked in — the Start-of-Day report is ready. */
+  /** Everyone who's working has sent a Start of Day — that report is ready. */
   startReady: boolean;
-  /** Everyone who started has clocked out — the End-of-Day report is ready. */
+  /** Everyone who started has sent an End of Day — that report is ready. */
   endReady: boolean;
   adminEmails: string[];
   /** Pre-composed Start-of-Day and End-of-Day emails (Gmail compose links). */
@@ -53,7 +53,7 @@ export interface RollCallData {
 }
 
 /**
- * Today's clock-in / clock-out status for every VA, plus a pre-composed email
+ * Today's Start-of-Day / End-of-Day status for every VA, plus a pre-composed email
  * summary + mailto link addressed to the admins. Powers the daily reporter's
  * unique dashboard panel.
  */
@@ -66,12 +66,12 @@ export async function getTodayRollCall(
 
   const [vas, admins, entries] = await Promise.all([
     prisma.user.findMany({
-      where: { role: { in: VA_ROLES } },
+      where: { role: { in: VA_ROLES }, removedAt: null },
       select: { id: true, name: true, title: true },
       orderBy: { name: "asc" },
     }),
     prisma.user.findMany({
-      where: { role: "ADMIN" },
+      where: { role: "ADMIN", removedAt: null },
       select: { email: true },
       orderBy: { name: "asc" },
     }),
@@ -96,9 +96,6 @@ export async function getTodayRollCall(
       name: v.name,
       title: v.title,
       state,
-      timeInLabel: e?.timeIn ? formatEtTime(e.timeIn) : null,
-      timeOutLabel: e?.timeOut ? formatEtTime(e.timeOut) : null,
-      hoursWorked: e?.hoursWorked != null ? Number(e.hoursWorked) : null,
     };
   });
 
@@ -110,10 +107,10 @@ export async function getTodayRollCall(
     incomplete: rows.filter((r) => r.state === "INCOMPLETE").length,
     none: rows.filter((r) => r.state === "NONE").length,
   };
-  // Start-of-Day: everyone who's working has a time-in (nobody "not started").
+  // Start-of-Day: everyone who's working has sent one (nobody "not started").
   const startReady =
     counts.none === 0 && counts.in + counts.out + counts.incomplete > 0;
-  // End-of-Day: everyone who started has clocked out.
+  // End-of-Day: everyone who started has sent one.
   const endReady = counts.in === 0 && counts.incomplete === 0 && counts.out > 0;
 
   const adminEmails = admins.map((a) => a.email);

@@ -27,7 +27,7 @@ export function PtoModal({
       open={open}
       onClose={onClose}
       title="Log PTO / Vacation"
-      description="Record a paid time-off or vacation day. It’s credited as a full 8-hour day — no clock in/out needed."
+      description="Mark a day as paid time off or vacation. No Start or End of Day report is needed for it."
     >
       <form action={formAction} className="space-y-5" noValidate>
         {state.error && (
@@ -41,10 +41,7 @@ export function PtoModal({
 
         <div className="flex items-center gap-3 rounded-lg bg-brand-yellow-50 px-3 py-2.5 text-sm text-[var(--text)]">
           <span aria-hidden className="text-lg">🌴</span>
-          <span>
-            This day will be counted as{" "}
-            <span className="font-heading font-bold">8 hours</span> of PTO.
-          </span>
+          <span>Your admins will see this day as PTO.</span>
         </div>
 
         <div>

@@ -7,14 +7,6 @@ import { z } from "zod";
  * no HTML sanitization is required. We trim to normalize whitespace.
  */
 
-// datetime-local values are "YYYY-MM-DDTHH:mm" (some browsers append ":ss").
-const wallClock = z
-  .string()
-  .regex(
-    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/,
-    "Enter a valid date and time.",
-  );
-
 const requiredText = (label: string, max = 5000) =>
   z
     .string()
@@ -42,18 +34,30 @@ export const quickLoginSchema = z.object({
 });
 export type QuickLoginInput = z.infer<typeof quickLoginSchema>;
 
-export const timeInSchema = z.object({
-  timeInWallClock: wallClock,
+/** Start of Day: what the VA plans to do today (prefilled from the week plan). */
+export const startDaySchema = z.object({
   startOfDayTasks: requiredText("Start-of-day tasks"),
   urgentNeed: optionalText(),
 });
-export type TimeInInput = z.infer<typeof timeInSchema>;
+export type StartDayInput = z.infer<typeof startDaySchema>;
 
-export const timeOutSchema = z.object({
-  timeOutWallClock: wallClock,
+/** End of Day: what the VA actually did (prefilled from the Gemini draft). */
+export const endDaySchema = z.object({
   endOfDayTasks: requiredText("End of Day Report"),
 });
-export type TimeOutInput = z.infer<typeof timeOutSchema>;
+export type EndDayInput = z.infer<typeof endDaySchema>;
+
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a valid date.");
+
+/**
+ * The Mon–Fri weekly plan. Every day is optional — an empty box clears that
+ * day's plan. Which dates are actually editable is checked server-side
+ * (src/lib/plans.ts), not here.
+ */
+export const weekPlanSchema = z
+  .array(z.object({ date: isoDate, tasks: optionalText() }))
+  .max(5);
+export type WeekPlanInput = z.infer<typeof weekPlanSchema>;
 
 /** VA editing their own start-of-day tasks or end-of-day report in place. */
 export const updateTaskSchema = z.object({
@@ -68,15 +72,12 @@ export type UpdateTaskInput = z.infer<typeof updateTaskSchema>;
 
 export const resolveStaleSchema = z.object({
   entryId: z.string().min(1),
-  timeOutWallClock: wallClock,
   endOfDayTasks: requiredText("End of Day Report"),
 });
 export type ResolveStaleInput = z.infer<typeof resolveStaleSchema>;
 
 export const ptoSchema = z.object({
-  date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a valid date."),
+  date: isoDate,
   note: optionalText(500),
 });
 export type PtoInput = z.infer<typeof ptoSchema>;

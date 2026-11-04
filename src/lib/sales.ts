@@ -44,7 +44,7 @@ export async function getRecipientIdsForChannel(
 ): Promise<string[]> {
   const emails = CHANNEL_EMAILS[channel].map((e) => e.toLowerCase());
   const users = await prisma.user.findMany({
-    where: { email: { in: emails } },
+    where: { email: { in: emails }, removedAt: null },
     select: { id: true },
   });
   return users.map((u) => u.id);

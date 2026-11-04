@@ -1,5 +1,6 @@
 import { requireVA } from "@/lib/session";
 import { getVaDayState } from "@/lib/timeEntries";
+import { getWeekPlan } from "@/lib/plans";
 import { getUnreadNoticesForUser } from "@/lib/notices";
 import { dismissNoticeAction } from "@/app/notices/actions";
 import { getActiveGamePromo } from "@/lib/leaderboards/registry";
@@ -11,8 +12,9 @@ export const dynamic = "force-dynamic";
 
 export default async function VaPage() {
   const session = await requireVA();
-  const [state, notices] = await Promise.all([
+  const [state, weekPlan, notices] = await Promise.all([
     getVaDayState(session.userId),
+    getWeekPlan(session.userId),
     getUnreadNoticesForUser(session.userId),
   ]);
   const firstName = session.name.split(" ")[0] || session.name;
@@ -24,6 +26,7 @@ export default async function VaPage() {
       <VaDayClient
         firstName={firstName}
         state={state}
+        weekPlan={weekPlan}
         notices={notices}
         game={GAMES_ENABLED ? getActiveGamePromo() : null}
         dismissNoticeAction={dismissNoticeAction}

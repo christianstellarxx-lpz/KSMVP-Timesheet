@@ -128,7 +128,6 @@ export function DashboardFilters({
             <option value="date_desc">Date — newest first</option>
             <option value="date_asc">Date — oldest first</option>
             <option value="va">VA name (A–Z)</option>
-            <option value="hours_desc">Hours worked — high to low</option>
             <option value="urgent_first">Urgent first</option>
           </select>
         </div>

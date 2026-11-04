@@ -1,6 +1,6 @@
 import type { DashboardEntry } from "@/lib/dashboard";
 import { UrgentBanner } from "@/components/UrgentBanner";
-import { StatusBadge, PunctualityChips } from "@/components/Badges";
+import { StatusBadge } from "@/components/Badges";
 import { EntryComments } from "./EntryComments";
 import { DeleteButton } from "./DeleteButton";
 import { RemoveUrgentButton } from "./RemoveUrgentButton";
@@ -59,7 +59,6 @@ export function DashboardEntryCard({
               <WarnDot /> Urgent
             </span>
           )}
-          <PunctualityChips chips={entry.chips} />
           <StatusBadge status={entry.status} />
           {canDeleteEntry && (
             <DeleteButton
@@ -73,24 +72,6 @@ export function DashboardEntryCard({
       </header>
 
       <div className="space-y-4 p-4 sm:p-5">
-        {/* Times */}
-        <div className="flex flex-wrap gap-x-8 gap-y-3">
-          <Stat label="Time in" value={entry.timeInLabel ?? "—"} />
-          <Stat
-            label="Time out"
-            value={
-              entry.timeOutLabel ??
-              (entry.status === "INCOMPLETE" ? "Not recorded" : "—")
-            }
-            muted={!entry.timeOutLabel}
-          />
-          <Stat
-            label="Hours worked"
-            value={entry.hoursWorked != null ? String(entry.hoursWorked) : "—"}
-            accent={entry.hoursWorked != null}
-          />
-        </div>
-
         {/* Urgent — prominent, only when filled. Admins can clear it once handled. */}
         {urgent && entry.urgentNeed && (
           <UrgentBanner
@@ -116,7 +97,7 @@ export function DashboardEntryCard({
             text={entry.endOfDayTasks}
             emptyLabel={
               entry.status === "INCOMPLETE"
-                ? "No time-out logged — awaiting the VA’s end-of-day report."
+                ? "No End-of-Day report sent — awaiting the VA’s report."
                 : entry.status === "OPEN"
                   ? "Still in progress."
                   : "—"
@@ -169,9 +150,6 @@ function PtoRow({
           <span className="chip bg-brand-yellow-400 text-brand-blue-900">
             🌴 PTO / Vacation
           </span>
-          <span className="chip bg-brand-blue-50 text-brand-blue-700">
-            8 hours
-          </span>
           {canDelete && (
             <DeleteButton
               action={deleteEntryAction}
@@ -192,7 +170,7 @@ function PtoRow({
               {note}
             </>
           ) : (
-            "Paid time off — counted as a full 8-hour day."
+            "Paid time off — no reports expected."
           )}
         </p>
       </div>
@@ -219,35 +197,6 @@ function TaskColumn({
         }`}
       >
         {value || emptyLabel}
-      </p>
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  accent = false,
-  muted = false,
-}: {
-  label: string;
-  value: string;
-  accent?: boolean;
-  muted?: boolean;
-}) {
-  return (
-    <div>
-      <p className="field-label mb-0">{label}</p>
-      <p
-        className={`font-heading text-xl font-bold ${
-          accent
-            ? "text-brand-blue-600"
-            : muted
-              ? "text-[var(--text-muted)]"
-              : "text-[var(--text)]"
-        }`}
-      >
-        {value}
       </p>
     </div>
   );

@@ -6,17 +6,16 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { resolveStaleAction } from "@/app/va/actions";
 import { emptyFormState } from "@/lib/formState";
 import type { EntryDTO } from "@/lib/timeEntries";
+import { EndOfDayField } from "./EndOfDayField";
 
 export function ResolveStaleModal({
   open,
   onClose,
   entry,
-  presetWallClock,
 }: {
   open: boolean;
   onClose: () => void;
   entry: EntryDTO;
-  presetWallClock: string;
 }) {
   const [state, formAction] = useActionState(resolveStaleAction, emptyFormState);
 
@@ -29,8 +28,8 @@ export function ResolveStaleModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Close an unfinished session"
-      description={`You clocked in on ${entry.workDateLabel} but never clocked out. Set your actual finish time so your hours are counted correctly.`}
+      title="Finish an earlier day"
+      description={`You sent a Start of Day on ${entry.workDateLabel} but no End-of-Day report. Add it now — it reaches your admins right away.`}
     >
       <form action={formAction} className="space-y-5" noValidate>
         <input type="hidden" name="entryId" value={entry.id} />
@@ -44,58 +43,14 @@ export function ResolveStaleModal({
           </p>
         )}
 
-        <div className="rounded-lg bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--text-muted)]">
-          <span className="font-semibold text-[var(--text)]">
-            {entry.workDateLabel}
-          </span>{" "}
-          · clocked in at{" "}
-          <span className="font-semibold text-[var(--text)]">
-            {entry.timeInLabel} ET
-          </span>
-        </div>
-
-        <div>
-          <label htmlFor="resolveTimeOut" className="field-label">
-            Actual Time Out <span className="text-[var(--text-muted)]">(ET)</span>
-          </label>
-          <input
-            id="resolveTimeOut"
-            name="timeOutWallClock"
-            type="datetime-local"
-            defaultValue={presetWallClock}
-            required
-            className="field-input"
-            aria-invalid={!!state.fieldErrors?.timeOutWallClock}
-          />
-          {state.fieldErrors?.timeOutWallClock && (
-            <p className="field-error">{state.fieldErrors.timeOutWallClock}</p>
-          )}
-        </div>
-
-        <div>
-          <label htmlFor="resolveEndTasks" className="field-label">
-            End of Day Report <span className="text-brand-orange-600">*</span>
-          </label>
-          <textarea
-            id="resolveEndTasks"
-            name="endOfDayTasks"
-            required
-            rows={4}
-            className="field-textarea"
-            placeholder="What did you accomplish that day?"
-            aria-invalid={!!state.fieldErrors?.endOfDayTasks}
-          />
-          {state.fieldErrors?.endOfDayTasks && (
-            <p className="field-error">{state.fieldErrors.endOfDayTasks}</p>
-          )}
-        </div>
+        <EndOfDayField entryId={entry.id} error={state.fieldErrors?.endOfDayTasks} />
 
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button type="button" onClick={onClose} className="btn-ghost">
             Cancel
           </button>
           <SubmitButton className="btn-action px-6" pendingLabel="Saving…">
-            Save & close session
+            Send report
           </SubmitButton>
         </div>
       </form>
