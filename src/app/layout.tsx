@@ -1,17 +1,26 @@
 import type { Metadata, Viewport } from "next";
-import { Poppins, Open_Sans } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
-const poppins = Poppins({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+// Self-hosted (src/app/fonts, latin subset, from Google Fonts, SIL Open Font
+// License) rather than next/font/google: that downloads the fonts during every
+// build, and a bad Google Fonts response on Vercel's build servers failed the
+// whole deploy (November 2026). Local files can't.
+const poppins = localFont({
+  src: [
+    { path: "./fonts/poppins-400.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/poppins-500.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/poppins-600.woff2", weight: "600", style: "normal" },
+    { path: "./fonts/poppins-700.woff2", weight: "700", style: "normal" },
+  ],
   variable: "--font-poppins",
   display: "swap",
 });
 
-const openSans = Open_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+// Open Sans is a variable font: one file covers every weight we use.
+const openSans = localFont({
+  src: "./fonts/open-sans.woff2",
+  weight: "400 700",
   variable: "--font-open-sans",
   display: "swap",
 });
