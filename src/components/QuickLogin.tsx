@@ -11,6 +11,8 @@ export interface QuickUser {
   firstName: string;
   name: string;
   title: string;
+  /** Headshot URL (their office character), or null to show initials. */
+  avatar: string | null;
 }
 
 export function QuickLogin({
@@ -57,12 +59,7 @@ function Box({
             title={u.name}
             className="flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-lg border border-[var(--border)] bg-white px-2 py-3 text-center transition-colors hover:border-brand-blue-300 hover:bg-brand-blue-50 focus-visible:border-brand-blue-400"
           >
-            <span
-              aria-hidden
-              className="grid h-8 w-8 place-items-center rounded-full bg-brand-blue-600 text-[11px] font-heading font-bold text-white"
-            >
-              {initials(u.name)}
-            </span>
+            <Avatar user={u} className="h-8 w-8 text-[11px]" />
             <span className="font-heading text-sm font-semibold text-[var(--text)]">
               {u.firstName}
             </span>
@@ -93,12 +90,7 @@ function PinModal({
         <input type="hidden" name="userId" value={user.id} />
 
         <div className="flex items-center gap-3 rounded-lg bg-[var(--surface-muted)] px-3 py-2.5">
-          <span
-            aria-hidden
-            className="grid h-9 w-9 place-items-center rounded-full bg-brand-blue-600 text-xs font-heading font-bold text-white"
-          >
-            {initials(user.name)}
-          </span>
+          <Avatar user={user} className="h-9 w-9 text-xs" />
           <div className="min-w-0">
             <p className="truncate font-heading text-sm font-semibold text-[var(--text)]">
               {user.name}
@@ -146,6 +138,27 @@ function PinModal({
         </SubmitButton>
       </form>
     </Modal>
+  );
+}
+
+function Avatar({ user, className }: { user: QuickUser; className: string }) {
+  if (user.avatar) {
+    return (
+      <img
+        src={user.avatar}
+        alt=""
+        aria-hidden
+        className={`${className} rounded-full bg-brand-blue-50 object-cover ring-1 ring-brand-blue-100`}
+      />
+    );
+  }
+  return (
+    <span
+      aria-hidden
+      className={`${className} grid place-items-center rounded-full bg-brand-blue-600 font-heading font-bold text-white`}
+    >
+      {initials(user.name)}
+    </span>
   );
 }
 

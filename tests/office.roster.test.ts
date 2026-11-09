@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { OFFICE_ROSTER, visibleMembers } from "@/lib/office/roster";
+import { OFFICE_ROSTER, visibleMembers, officeSlugForName } from "@/lib/office/roster";
 
 // Everyone with an account, by slug (Marc has none).
 const accounts = new Set(OFFICE_ROSTER.filter((m) => m.account).map((m) => m.slug));
@@ -32,5 +32,17 @@ describe("visibleMembers", () => {
 
   it("leaves only Marc when nobody else is active", () => {
     expect(visibleMembers(none, none)).toEqual([{ slug: "marc-fey", desk: "D3", firstName: "Marc" }]);
+  });
+});
+
+describe("officeSlugForName", () => {
+  it("maps a login name to its character", () => {
+    expect(officeSlugForName("Kevin Spann")).toBe("kevin-spann");
+    expect(officeSlugForName("  Venus  Paglinawan ")).toBe("venus-paglinawan");
+  });
+
+  it("is null for someone without a character", () => {
+    expect(officeSlugForName("Rodney Monasque")).toBeNull();
+    expect(officeSlugForName("Stephanie Mays")).toBeNull();
   });
 });

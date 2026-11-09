@@ -9,6 +9,7 @@ characters/, seats.txt). Writes:
   walkable.txt                        192x128 cells of 8 px: '.' open floor, '#' blocked
   objects.png                         1536x1024, pixel value = object id (0 = none)
   objects.json                        per object: id, bbox, baseline (lowest pixel), kind, seats
+  heads/<slug>.webp                   112x112 headshot from the idle frame (login page avatars)
 
 Objects are the things people walk or sit behind. Each fg-*.png is used only as
 a mask: its connected parts (dilated 4 px) are one object each, and the browser
@@ -81,6 +82,22 @@ def write_webp():
         Image.open(OFFICE / f"bg-{period}.png").convert("RGB").save(WEB / f"bg-{period}.webp", quality=80)
     for sheet in sorted((OFFICE / "characters").glob("*.png")):
         Image.open(sheet).convert("RGBA").save(WEB / f"{sheet.stem}.webp", quality=90, method=6)
+
+
+def write_heads():
+    """A square around the head of each person's idle frame (row 0, col 0), shown 2x."""
+    (WEB / "heads").mkdir(exist_ok=True)
+    for sheet in sorted((OFFICE / "characters").glob("*.png")):
+        if sheet.stem.startswith("_"):
+            continue
+        frame = Image.open(sheet).convert("RGBA").crop((0, 0, 144, 144))
+        alpha = np.asarray(frame)[..., 3] >= 24
+        top = int(np.nonzero(alpha)[0].min())
+        head_xs = np.nonzero(alpha[top : top + 45])[1]
+        cx = (int(head_xs.min()) + int(head_xs.max())) // 2
+        side = 56
+        head = frame.crop((cx - side // 2, top - 3, cx + side // 2, top - 3 + side))
+        head.resize((side * 2, side * 2), Image.NEAREST).save(WEB / "heads" / f"{sheet.stem}.webp", lossless=True)
 
 
 def walkable():
@@ -167,10 +184,11 @@ def check(objs, cells, seats):
 def main():
     seats = read_seats()
     write_webp()
+    write_heads()
     cells = walkable()
     objs = objects(seats)
     check(objs, cells, seats)
-    for f in sorted(WEB.iterdir()):
+    for f in sorted(p for p in WEB.rglob("*") if p.is_file()):
         print(f"  {f.relative_to(OFFICE.parent.parent)}  {f.stat().st_size // 1024} KB")
     kinds = {}
     for o in objs:

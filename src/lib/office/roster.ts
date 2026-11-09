@@ -34,3 +34,9 @@ export function visibleMembers(activeSlugs: ReadonlySet<string>, ptoSlugs: Reado
     ({ slug, desk, firstName }) => ({ slug, desk, firstName }),
   );
 }
+
+/** The office character for a login name ("Kevin Spann" -> "kevin-spann"), or null if they have none. */
+export function officeSlugForName(name: string): string | null {
+  const slug = name.trim().toLowerCase().split(/\s+/).join("-");
+  return OFFICE_ROSTER.some((m) => m.slug === slug) ? slug : null;
+}

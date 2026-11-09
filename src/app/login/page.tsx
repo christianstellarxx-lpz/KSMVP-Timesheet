@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession, homePathForRole } from "@/lib/session";
 import { getOfficePeople } from "@/lib/officeRoster";
 import { OfficePanel } from "@/components/office/OfficePanel";
+import { officeSlugForName } from "@/lib/office/roster";
 
 export const metadata = { title: "Sign in — KSMVP VA Tasks" };
 export const dynamic = "force-dynamic";
@@ -20,12 +21,19 @@ const TEAM_ROLE_ORDER: Record<string, number> = {
   INTERN: 2,
 };
 
+function avatarFor(name: string): string | null {
+  const slug = officeSlugForName(name);
+  return slug ? `/office/web/heads/${slug}.webp` : null;
+}
+
 function toQuickUser(u: { id: string; name: string; title: string }): QuickUser {
   return {
     id: u.id,
     name: u.name,
     title: u.title,
     firstName: u.name.split(" ")[0] || u.name,
+    // Their office character's headshot; people without one keep their initials.
+    avatar: avatarFor(u.name),
   };
 }
 
@@ -55,10 +63,12 @@ export default async function LoginPage() {
     .map(toQuickUser);
 
   return (
-    // Desktop: the form on the left half, the live office on the right.
-    <main className="min-h-screen lg:grid lg:grid-cols-2">
-      <div className="flex min-h-screen flex-col items-center justify-center px-4 py-10">
-        <div className="w-full max-w-md">
+    // Desktop: the login card and the live office side by side, as one centered
+    // group (max 1400px, 56px apart, never touching the screen edges). Below lg
+    // the office is not rendered and the card is centered on its own, as before.
+    <main className="flex min-h-screen items-center justify-center px-4 py-10 lg:px-12 lg:py-12">
+      <div className="flex w-full max-w-[1400px] flex-col items-center lg:flex-row lg:justify-center lg:gap-14">
+        <div className="w-full max-w-md lg:shrink-0">
           <div className="mb-6 flex justify-center">
             <Logo />
           </div>
@@ -79,12 +89,12 @@ export default async function LoginPage() {
             · We Make AI Easy
           </p>
         </div>
+        {officePeople && (
+          <div className="hidden min-w-0 flex-1 lg:block">
+            <OfficePanel people={officePeople} />
+          </div>
+        )}
       </div>
-      {officePeople && (
-        <div className="hidden items-center p-6 lg:flex">
-          <OfficePanel people={officePeople} />
-        </div>
-      )}
     </main>
   );
 }
