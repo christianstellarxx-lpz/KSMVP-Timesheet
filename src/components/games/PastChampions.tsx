@@ -13,6 +13,8 @@ import type { PastChampion } from "@/lib/leaderboards/registry";
  */
 export function PastChampions({ champions }: { champions: PastChampion[] }) {
   if (champions.length === 0) return null;
+  // The medal goes to the newest season that counted, not to a void one.
+  const medalKey = champions.find((c) => !c.voidReason)?.monthKey;
 
   return (
     <section className="rounded-card bg-white shadow-card" aria-label="Past champions">
@@ -26,15 +28,17 @@ export function PastChampions({ champions }: { champions: PastChampion[] }) {
       </div>
 
       <ol className="divide-y divide-[var(--border)]">
-        {champions.map((champion, i) => (
+        {champions.map((champion) => (
           <li
             key={champion.monthKey}
-            className="flex items-center gap-3 px-4 py-3 sm:px-6"
+            className={`flex items-center gap-3 px-4 py-3 sm:px-6${
+              champion.voidReason ? " opacity-50 grayscale" : ""
+            }`}
           >
             <span
               aria-hidden
               className={`grid h-8 w-8 shrink-0 place-items-center rounded-full font-heading text-xs font-bold ${
-                i === 0
+                champion.monthKey === medalKey
                   ? "bg-brand-yellow-400 text-brand-yellow-900"
                   : "bg-brand-blue-50 text-brand-blue-700"
               }`}
@@ -53,10 +57,10 @@ export function PastChampions({ champions }: { champions: PastChampion[] }) {
 
             <span className="shrink-0 text-right">
               <span className="block font-heading text-lg font-bold tabular-nums leading-tight text-brand-blue-700">
-                {champion.score}
+                {champion.voidReason ? "—" : champion.score}
               </span>
               <span className="block text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
-                {champion.scoreLabel}
+                {champion.voidReason ? "Void" : champion.scoreLabel}
               </span>
             </span>
           </li>

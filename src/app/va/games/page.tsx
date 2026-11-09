@@ -5,12 +5,11 @@ import {
   getPastChampions,
   getReigningChampion,
 } from "@/lib/leaderboards/registry";
-import { STRETCH_SCORING_SUMMARY } from "@/lib/leaderboards/stretchResolver";
-import { getStretchGoalState } from "@/lib/stretch/game";
+import { getTrapPageState } from "@/lib/trapshift/game";
 import { formatEtDateLong } from "@/lib/time";
 import { PastChampions } from "@/components/games/PastChampions";
 import { ReigningChampion } from "@/components/games/ReigningChampion";
-import { StretchGoalPanel } from "@/components/games/StretchGoalPanel";
+import TrapShift from "@/components/games/TrapShift";
 
 export const metadata = { title: "Games — KSMVP VA Tasks" };
 export const dynamic = "force-dynamic";
@@ -20,16 +19,16 @@ export const dynamic = "force-dynamic";
  * already know — only the game inside it changed.
  *
  * Reigning Champion sits at the top (mobile-first), then this month's rotating
- * game — Stretch Goal from September 2026 — with its monthly leaderboard, then
- * the wall of fame carrying every earlier season including Daily Word Guess.
+ * game — Trap Shift from November 2026 — with its season board, then the wall
+ * of fame carrying every earlier season, including archived games.
  */
 export default async function GamesPage() {
   const session = await requireVA();
   // Games are off for everyone — send old bookmarks back to My Day.
   if (!GAMES_ENABLED) redirect("/va");
-  const [champion, stretch, pastChampions] = await Promise.all([
+  const [champion, trap, pastChampions] = await Promise.all([
     getReigningChampion(),
-    getStretchGoalState(session.userId),
+    getTrapPageState(session.userId),
     getPastChampions(),
   ]);
 
@@ -43,24 +42,16 @@ export default async function GamesPage() {
           This month’s game
         </h1>
         <p className="text-sm text-[var(--text-muted)]">
-          {formatEtDateLong(stretch.today)} · one ranked run a day, once you’ve
-          timed in and logged your start-of-day task
+          {formatEtDateLong(trap.today)} · three tries a day, once you’ve sent
+          your Start of Day
         </p>
       </div>
 
-      <StretchGoalPanel
-        unlocked={stretch.session.unlocked}
-        runUsed={stretch.session.runUsed}
-        runState={stretch.session.runState}
-        seed={stretch.session.seed}
-        season={stretch.session.season}
-        seasonLabel={stretch.seasonLabel}
-        leaderboard={stretch.leaderboard}
-        dailyTally={stretch.dailyTally}
-        myRank={stretch.myRank}
+      <TrapShift
+        initialSession={trap.session}
+        initialRail={trap.rail}
+        seasonLabel={trap.seasonLabel}
       />
-
-      <p className="text-xs text-[var(--text-muted)]">{STRETCH_SCORING_SUMMARY}</p>
 
       <PastChampions champions={pastChampions} />
     </div>

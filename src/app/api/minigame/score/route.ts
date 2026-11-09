@@ -2,45 +2,37 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getSession, canViewVa } from "@/lib/session";
 import { GAMES_ENABLED } from "@/lib/features";
 import { check } from "@/lib/rateLimit";
-import { submitRun } from "@/lib/stretch/game";
-import { stretchRunSchema } from "@/lib/validation";
+import { scoreTrapRun } from "@/lib/trapshift/game";
+import { trapScoreSchema } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
 
 /**
- * POST /api/minigame/score — body `{ seed, holds }`.
+ * POST /api/minigame/score — body `{ runId, log }`. Also the target of the
+ * client's `sendBeacon` when a tab closes mid-run (the partial log scores as
+ * "quit" with the distance reached).
  *
- * THE CLIENT'S SCORE IS NEVER READ. There is no score field in
- * `stretchRunSchema` and none is destructured below, so there is nowhere for a
- * forged number to enter. The server replays `holds` against the seed it
- * issued, and `submitRun` stores `simulateRun()`'s own output.
- *
- * Everything else — the run exists, it is still "issued", the seed matches, the
- * replay actually finished — is enforced in `submitRun`, inside the same write
- * that records the result. This handler does auth, rate limiting, and shape
- * validation only.
+ * THE CLIENT'S SCORE IS NEVER READ. The schema has no score, seed, routes,
+ * attempt or date field, and Zod strips anything extra. `scoreTrapRun` replays
+ * the log on the stored seed and routes and stores that result.
  */
+const SCORE_LIMIT = 10;
+const SCORE_WINDOW_MS = 60_000;
+/** A 15-minute log is well under this; anything bigger is not a real run. */
+const MAX_BODY_BYTES = 1_000_000;
 
-/** Submit attempts allowed per VA per window. A real run takes far fewer. */
-const SUBMIT_LIMIT = 8;
-const SUBMIT_WINDOW_MS = 5 * 60_000;
-
-/**
- * Log a rejected submission with the user id.
- *
- * A legitimate player hits this essentially never: they get one run, and the
- * client posts once when it ends. A cluster of these against one id is somebody
- * probing the endpoint, and the brief is explicit that we want to know before
- * prize day rather than after.
- */
-function logRejection(
+/** Every rejection is logged with the user id — probing should show up before prize day. */
+function reject(
   userId: string,
+  status: number,
+  error: string,
   reason: string,
-  detail?: Record<string, unknown>,
-): void {
-  console.warn(
-    `[minigame] rejected submission user=${userId} reason=${reason}` +
-      (detail ? ` ${JSON.stringify(detail)}` : ""),
+  headers: Record<string, string> = {},
+) {
+  console.warn(`[minigame] rejected submission user=${userId} status=${status} reason=${reason}`);
+  return NextResponse.json(
+    { error },
+    { status, headers: { "Cache-Control": "no-store", ...headers } },
   );
 }
 
@@ -53,66 +45,45 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Not signed in." }, { status: 401 });
   }
   if (!canViewVa(session.role)) {
-    return NextResponse.json(
-      { error: "This game is for the VA dashboard." },
-      { status: 403 },
-    );
+    return NextResponse.json({ error: "This game is for the VA dashboard." }, { status: 403 });
   }
+  const userId = session.userId;
 
-  const limit = check(
-    `minigame:score:${session.userId}`,
-    SUBMIT_LIMIT,
-    SUBMIT_WINDOW_MS,
-  );
+  const limit = check(`minigame:score:${userId}`, SCORE_LIMIT, SCORE_WINDOW_MS);
   if (!limit.allowed) {
-    logRejection(session.userId, "rate_limited");
-    return NextResponse.json(
-      { error: "Too many submissions. Try again shortly." },
-      {
-        status: 429,
-        headers: {
-          "Cache-Control": "no-store",
-          "Retry-After": String(limit.retryAfterSeconds),
-        },
-      },
-    );
+    return reject(userId, 429, "Too many submissions. Try again shortly.", "rate_limited", {
+      "Retry-After": String(limit.retryAfterSeconds),
+    });
   }
 
+  // shortcut: a chunked body with no Content-Length is buffered before the size
+  // check below; Vercel's own 4.5 MB request cap bounds that.
+  if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) {
+    return reject(userId, 400, "That replay is too large.", "body_too_large");
+  }
   let body: unknown;
   try {
-    body = await req.json();
+    const text = await req.text();
+    if (text.length > MAX_BODY_BYTES) {
+      return reject(userId, 400, "That replay is too large.", "body_too_large");
+    }
+    body = JSON.parse(text);
   } catch {
-    logRejection(session.userId, "unparseable_body");
-    return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+    return reject(userId, 400, "Invalid request.", "unparseable_body");
   }
 
-  const parsed = stretchRunSchema.safeParse(body);
+  const parsed = trapScoreSchema.safeParse(body);
   if (!parsed.success) {
-    logRejection(session.userId, "malformed_payload", {
-      issue: parsed.error.issues[0]?.path.join(".") ?? "unknown",
-    });
-    return NextResponse.json(
-      { error: "That replay wasn’t valid." },
-      { status: 400 },
-    );
+    const where = parsed.error.issues[0]?.path.join(".") ?? "?";
+    return reject(userId, 400, "That replay wasn’t valid.", `malformed_payload:${where}`);
   }
 
-  const result = await submitRun(
-    session.userId,
-    parsed.data.seed,
-    parsed.data.holds,
+  const result = await scoreTrapRun(userId, parsed.data.runId, parsed.data.log);
+  if (!result.ok) return reject(userId, result.status, result.message, result.reason);
+
+  const { score, cleared, ended, cause, todayBest, seasonTotal, attemptsLeft, rank } = result;
+  return NextResponse.json(
+    { score, cleared, ended, cause, todayBest, seasonTotal, attemptsLeft, rank },
+    { headers: { "Cache-Control": "no-store" } },
   );
-  if (!result.ok) {
-    logRejection(session.userId, "verification_failed", {
-      status: result.status,
-    });
-    return NextResponse.json(
-      { error: result.message },
-      { status: result.status, headers: { "Cache-Control": "no-store" } },
-    );
-  }
-
-  return NextResponse.json(result.run, {
-    headers: { "Cache-Control": "no-store" },
-  });
 }

@@ -1,24 +1,17 @@
 import { NextResponse } from "next/server";
 import { getSession, canViewVa } from "@/lib/session";
 import { GAMES_ENABLED } from "@/lib/features";
-import { getMiniGameSession } from "@/lib/stretch/game";
+import { getTrapSession } from "@/lib/trapshift/game";
 
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/minigame/session — this VA's state for today's ranked run.
+ * GET /api/minigame/session — this VA's Trap Shift tries for today:
+ * `{ unlocked, attemptsUsed, attemptsLeft, todayBest, seasonTotal, runsToday, season }`.
  *
- * Returns `{ unlocked, runUsed, seed, season }`.
- *
- * `unlocked` is true only once the VA has timed in today AND saved a
- * start-of-day task. On the first unlocked request of the day this issues the
- * seed and stores it at status "issued"; every later request returns that SAME
- * seed. That is deliberate and load-bearing — re-rolling on refresh would let
- * someone reload until they drew an easy layout.
- *
- * Like the archived Word routes, this handler is outside the middleware matcher
- * and enforces auth itself, answering 401/403 as JSON instead of redirecting a
- * fetch() to /login.
+ * No seed here, ever: a seed is handed out only by POST /start, with the try.
+ * Outside the middleware matcher, so it answers 401/403 as JSON itself.
+ * (Stretch Goal's version of this route is in src/games/_archive/stretch/api/.)
  */
 export async function GET() {
   if (!GAMES_ENABLED) {
@@ -29,14 +22,10 @@ export async function GET() {
     return NextResponse.json({ error: "Not signed in." }, { status: 401 });
   }
   if (!canViewVa(session.role)) {
-    return NextResponse.json(
-      { error: "This game is for the VA dashboard." },
-      { status: 403 },
-    );
+    return NextResponse.json({ error: "This game is for the VA dashboard." }, { status: 403 });
   }
 
-  const state = await getMiniGameSession(session.userId);
-  return NextResponse.json(state, {
+  return NextResponse.json(await getTrapSession(session.userId), {
     headers: { "Cache-Control": "no-store" },
   });
 }

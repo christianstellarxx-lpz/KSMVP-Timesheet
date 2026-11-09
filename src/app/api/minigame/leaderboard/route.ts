@@ -2,25 +2,14 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getSession, canViewVa } from "@/lib/session";
 import { GAMES_ENABLED } from "@/lib/features";
 import { etCurrentMonthKey, isMonthKey } from "@/lib/leaderboards/months";
-import {
-  getDailyTally,
-  getRailLeaderboard,
-  seasonLabelFor,
-} from "@/lib/stretch/game";
+import { getTrapBoard, toRail } from "@/lib/trapshift/game";
 
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/minigame/leaderboard?season=YYYY-MM
- *
- * Each VA's best single submitted run for that season, ordered by score desc
- * then perfects desc, with the caller's own row flagged. `season` defaults to
- * the current ET month; anything that isn't a well-formed "YYYY-MM" is rejected
- * rather than silently coerced.
- *
- * Also returns `today` — the daily tally. It is always *today*, never scoped to
- * the season queried (it carries its own `date` so it is self-describing), and
- * it rides along here so the panel refreshes both boards in one round trip.
+ * GET /api/minigame/leaderboard?season=YYYY-MM — the Trap Shift season board:
+ * each VA's daily bests summed over the season, with today's best and the
+ * caller's own row flagged. `season` defaults to the current ET month.
  */
 export async function GET(req: NextRequest) {
   if (!GAMES_ENABLED) {
@@ -31,50 +20,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Not signed in." }, { status: 401 });
   }
   if (!canViewVa(session.role)) {
-    return NextResponse.json(
-      { error: "This game is for the VA dashboard." },
-      { status: 403 },
-    );
+    return NextResponse.json({ error: "This game is for the VA dashboard." }, { status: 403 });
   }
 
   const requested = req.nextUrl.searchParams.get("season");
   if (requested !== null && !isMonthKey(requested)) {
-    return NextResponse.json(
-      { error: "Season must look like 2026-09." },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Season must look like 2026-11." }, { status: 400 });
   }
   const season = requested ?? etCurrentMonthKey();
-
-  const [rows, tally] = await Promise.all([
-    getRailLeaderboard(season, session.userId),
-    getDailyTally(session.userId),
-  ]);
-  const me = rows.find((r) => r.isYou);
+  const rows = toRail(await getTrapBoard(season), session.userId);
 
   return NextResponse.json(
-    {
-      season,
-      seasonLabel: seasonLabelFor(season),
-      myRank: me?.rank ?? null,
-      rows: rows.map((r) => ({
-        name: r.name,
-        score: r.score,
-        perfects: r.perfects,
-        isYou: r.isYou ?? false,
-      })),
-      today: {
-        date: tally.date,
-        dateLabel: tally.dateLabel,
-        stillToPlay: tally.stillToPlay,
-        rows: tally.rows.map((r) => ({
-          name: r.name,
-          score: r.score,
-          perfects: r.perfects,
-          isYou: r.isYou ?? false,
-        })),
-      },
-    },
+    { season, myRank: rows.find((r) => r.isYou)?.rank ?? null, rows },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

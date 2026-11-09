@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import {
   RUN_SUBMITTED,
   STRETCH_GAME_KEY,
-} from "@/lib/stretch/game";
+} from "@/games/_archive/stretch/game";
 import type { MonthKey } from "./months";
 import type { GameResolver, MonthlyLeaderRow } from "./types";
 

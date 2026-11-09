@@ -280,13 +280,33 @@ model MiniGameRun {
   // Issued by the server, never by the client, and never re-rolled. Kept inside
   // signed 32-bit range so it fits Postgres INTEGER without overflow.
   seed  Int
-  // The replay input log: [{ press, release }, …]. Empty until submitted.
+  // The replay input log. Empty until submitted.
+  //   Stretch Goal: [{ press, release }, …]
+  //   Trap Shift:   [[bits, frames], …] (run-length encoded)
   holds Json @default("[]")
+  // Trap Shift: the route per level ([0|1, 0|1, 0|1]) from routesFor(), fixed
+  // when the try is issued and replayed from here — never from the request.
+  routes Json?
+
+  // Trap Shift: which try of the day this is, 1..3. A CHECK constraint in the
+  // migration caps it at 3; one-run games (Stretch Goal) only ever write 1.
+  attemptNo Int @default(1)
 
   // All three are simulateRun()'s output, computed server-side.
   score    Int @default(0)
   perfects Int @default(0)
   tier     Int @default(0)
+
+  // Trap Shift: also simulateRun()'s output. `ended` is won | died | quit.
+  cleared      Int     @default(0)
+  levelReached Int     @default(0)
+  frames       Int     @default(0)
+  ended        String?
+  cause        String?
+
+  // For human review only — a flag never blocks or re-scores a run.
+  flagged    Boolean @default(false)
+  flagReason String?
 
   // REPLAY_VERSION at the time of the run. If the physics or the tier table
   // ever change, older rows are unverifiable rather than silently re-scored.
@@ -295,6 +315,11 @@ model MiniGameRun {
   // "issued"    — seed handed out, not yet played
   // "started"   — the player pressed Start. THE ATTEMPT IS NOW SPENT.
   // "submitted" — replay verified and scored; final.
+  // "abandoned" — Trap Shift only: a started try that was replaced by the next
+  //               start, expired, or failed the real-time check. Still a used try.
+  //
+  // Trap Shift rows are created straight at "started": its seed is handed out
+  // by /start, at the same moment the try is spent.
   //
   // The jump to "started" is what makes this one try a day rather than one
   // *submission* a day. Consuming the attempt only on submit let a player
@@ -311,8 +336,9 @@ model MiniGameRun {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // THE one-ranked-run-per-day rule. Enforced by the database, not the UI.
-  @@unique([userId, gameKey, playedOn])
+  // THE tries-per-day rule. Enforced by the database, not the UI: one row per
+  // try, and the attemptNo CHECK (1..3) means no fourth row can exist.
+  @@unique([userId, gameKey, playedOn, attemptNo])
   @@index([gameKey, season])
   @@index([userId])
   @@index([organizationId])

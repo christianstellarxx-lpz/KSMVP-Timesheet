@@ -149,6 +149,20 @@ export const stretchRunSchema = z.object({
 });
 export type StretchRunInput = z.infer<typeof stretchRunSchema>;
 
+/**
+ * Trap Shift score submission: `{ runId, log }` and nothing else — any other
+ * field (a score, seed, routes, attempt number, date) is stripped, never read.
+ * `validateLog` in the core re-checks the log, including the 15-minute cap.
+ */
+export const trapScoreSchema = z.object({
+  runId: z.string().min(1).max(64),
+  log: z
+    .array(z.tuple([z.number().int().min(0).max(7), z.number().int().min(1)]))
+    .min(1)
+    .max(60_000, "That replay is too long."),
+});
+export type TrapScoreInput = z.infer<typeof trapScoreSchema>;
+
 export const addMemberSchema = z.object({
   name: requiredText("Name", 120),
   email: z.string().trim().min(1, "Email is required.").email("Enter a valid email."),

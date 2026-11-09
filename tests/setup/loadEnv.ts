@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 
 /**
  * Load `.env` into process.env for the test run.
@@ -8,8 +8,11 @@ import { fileURLToPath } from "node:url";
  * its PrismaClient at module load, so the connection string has to be present
  * before any test file imports it. Existing environment variables always win,
  * so CI can override without editing the file.
+ *
+ * Resolved from the working directory (Vitest runs from the project root), not
+ * `import.meta.url`: under happy-dom that is not a file: URL.
  */
-const envPath = fileURLToPath(new URL("../../.env", import.meta.url));
+const envPath = resolve(process.cwd(), ".env");
 
 if (existsSync(envPath)) {
   for (const line of readFileSync(envPath, "utf8").split(/\r?\n/)) {

@@ -11,7 +11,7 @@ import {
   isUnlockedToday,
   startRun,
   submitRun,
-} from "@/lib/stretch/game";
+} from "@/games/_archive/stretch/game";
 import { getPastChampions } from "@/lib/leaderboards/registry";
 import { etDateStringToStorageDate, etToday } from "@/lib/time";
 import { driveRun, jitterForBeam } from "./helpers/stretchBot";

@@ -133,3 +133,33 @@ export async function submitGameScore(
 
   return { ok: true, state: await getGameState(userId) };
 }
+
+/**
+ * Has this VA saved a start-of-day task for today?
+ *
+ * In practice `startOfDayTasks` is captured when the entry is created and
+ * `startDaySchema` requires it, so today this is true whenever the entry
+ * exists — but the brief
+ * defines the unlock as both conditions, and checking them separately means the
+ * gate stays correct if SOD ever becomes its own step. PTO days are excluded by
+ * the clocked-in half of the gate, which requires a WORK entry.
+ */
+export async function hasStartOfDayTask(userId: string): Promise<boolean> {
+  const entry = await prisma.timeEntry.findFirst({
+    where: { vaId: userId, workDate: etDateStringToStorageDate(etToday()) },
+    select: { startOfDayTasks: true },
+  });
+  return !!entry && entry.startOfDayTasks.trim().length > 0;
+}
+
+/**
+ * The game unlocks only once the VA has timed in today AND logged their
+ * start-of-day task. Reads that state; never writes to it.
+ */
+export async function isUnlockedToday(userId: string): Promise<boolean> {
+  const [clockedIn, sod] = await Promise.all([
+    isClockedInToday(userId),
+    hasStartOfDayTask(userId),
+  ]);
+  return clockedIn && sod;
+}

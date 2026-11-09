@@ -9,7 +9,7 @@ import type { MonthKey } from "@/lib/word/logic";
  * one file plus one line in `registry.ts`, with no leaderboard rework.
  */
 
-export type GameId = "FLAPPY" | "WORD" | "STRETCH";
+export type GameId = "FLAPPY" | "WORD" | "STRETCH" | "TRAP";
 
 export interface MonthlyLeaderRow {
   rank: number;

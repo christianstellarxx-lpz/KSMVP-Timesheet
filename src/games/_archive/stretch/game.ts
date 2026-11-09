@@ -2,7 +2,11 @@ import "server-only";
 import { randomInt } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { isClockedInToday } from "@/lib/game";
+import { isUnlockedToday } from "@/lib/game";
+
+// The unlock gate moved to src/lib/game.ts when Trap Shift took over; re-exported
+// so the archived routes and tests keep their import.
+export { isUnlockedToday };
 import {
   etToday,
   etDateStringToStorageDate,
@@ -23,7 +27,7 @@ import {
   simulateRun,
   type Hold,
   type LeaderRow,
-} from "./core";
+} from "@/lib/stretch/core";
 
 /**
  * Stretch Goal — server-authoritative game module.
@@ -158,40 +162,6 @@ const RETRY_MESSAGE =
   "The server was waking up and didn’t respond in time. Please try again in a moment.";
 
 // ---------------------------------------------------------------------------
-// The unlock gate
-// ---------------------------------------------------------------------------
-
-/**
- * Has this VA saved a start-of-day task for today?
- *
- * In practice `startOfDayTasks` is captured when the entry is created and
- * `startDaySchema` requires it, so today this is true whenever the entry
- * exists — but the brief
- * defines the unlock as both conditions, and checking them separately means the
- * gate stays correct if SOD ever becomes its own step. PTO days are excluded by
- * the clocked-in half of the gate, which requires a WORK entry.
- */
-async function hasStartOfDayTask(userId: string): Promise<boolean> {
-  const entry = await prisma.timeEntry.findFirst({
-    where: { vaId: userId, workDate: etDateStringToStorageDate(etToday()) },
-    select: { startOfDayTasks: true },
-  });
-  return !!entry && entry.startOfDayTasks.trim().length > 0;
-}
-
-/**
- * The game unlocks only once the VA has timed in today AND logged their
- * start-of-day task. Reads that state; never writes to it.
- */
-export async function isUnlockedToday(userId: string): Promise<boolean> {
-  const [clockedIn, sod] = await Promise.all([
-    isClockedInToday(userId),
-    hasStartOfDayTask(userId),
-  ]);
-  return clockedIn && sod;
-}
-
-// ---------------------------------------------------------------------------
 // Session — issue today's seed, exactly once
 // ---------------------------------------------------------------------------
 
@@ -292,7 +262,7 @@ async function getOrIssueRun(
 ) {
   const playedOn = etDateStringToStorageDate(today);
   const key = {
-    userId_gameKey_playedOn: { userId, gameKey: STRETCH_GAME_KEY, playedOn },
+    userId_gameKey_playedOn_attemptNo: { userId, gameKey: STRETCH_GAME_KEY, playedOn, attemptNo: 1 },
   };
 
   const existing = await prisma.miniGameRun.findUnique({ where: key });
@@ -348,7 +318,7 @@ export async function submitRun(
 
     const run = await prisma.miniGameRun.findUnique({
       where: {
-        userId_gameKey_playedOn: { userId, gameKey: STRETCH_GAME_KEY, playedOn },
+        userId_gameKey_playedOn_attemptNo: { userId, gameKey: STRETCH_GAME_KEY, playedOn, attemptNo: 1 },
       },
     });
 

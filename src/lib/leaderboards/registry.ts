@@ -7,6 +7,7 @@ import {
 } from "./months";
 import { flappyResolver } from "./flappyResolver";
 import { stretchResolver } from "./stretchResolver";
+import { trapShiftResolver } from "./trapShiftResolver";
 import { wordResolver } from "./wordResolver";
 import type { GameId, GameResolver, MonthlyLeaderRow } from "./types";
 
@@ -20,7 +21,18 @@ import type { GameId, GameResolver, MonthlyLeaderRow } from "./types";
 export const GAME_ROTATION: readonly { from: MonthKey; gameId: GameId }[] = [
   { from: "2026-08", gameId: "WORD" }, // Daily Word Guess — game #2
   { from: "2026-09", gameId: "STRETCH" }, // Stretch Goal — game #3
+  { from: "2026-11", gameId: "TRAP" }, // Trap Shift — game #4
 ];
+
+/**
+ * Seasons that do not count: no Reigning Champion, and greyed out on the wall
+ * of fame. Rows are untouched — this only changes how the month is shown.
+ */
+export const VOID_SEASONS: Readonly<Record<MonthKey, string>> = {
+  // Games were switched off in October and only one VA played; the team agreed
+  // the month would not count.
+  "2026-10": "Season void — games were off and it was not counted.",
+};
 
 /** Months before the rotation started were Daily Flappy's. */
 export const DEFAULT_GAME_ID: GameId = "FLAPPY";
@@ -29,6 +41,7 @@ const RESOLVERS: Record<GameId, GameResolver> = {
   FLAPPY: flappyResolver,
   WORD: wordResolver,
   STRETCH: stretchResolver,
+  TRAP: trapShiftResolver,
 };
 
 /**
@@ -90,12 +103,14 @@ export const CHAMPION_FALLBACK: ChampionDTO = {
 /**
  * The rank-1 finisher of the *previous* calendar month, resolved through that
  * month's game. Nothing here is hardcoded — when a new month's game wraps, this
- * box crowns that winner on the next page load.
+ * box crowns that winner on the next page load. A void season is skipped, so
+ * the last champion of a season that counted keeps the title.
  */
 export async function getReigningChampion(
   now: Date = new Date(),
 ): Promise<ChampionDTO> {
-  const lastMonth = previousMonthKey(etCurrentMonthKey(now));
+  let lastMonth = previousMonthKey(etCurrentMonthKey(now));
+  while (VOID_SEASONS[lastMonth]) lastMonth = previousMonthKey(lastMonth);
   const resolver = resolverForMonth(lastMonth);
 
   let winner: MonthlyLeaderRow | undefined;
@@ -161,6 +176,8 @@ export interface PastChampion {
   score: number;
   /** That game's secondary stat, e.g. "18/21 solved · 62 guesses". */
   detail: string;
+  /** Set for a void season: shown greyed out, with this reason as its detail. */
+  voidReason?: string;
 }
 
 /**
@@ -185,6 +202,7 @@ export async function getPastChampions(
     try {
       const rows = await resolver.resolveMonthly(monthKey);
       const winner = rows[0];
+      const voidReason = VOID_SEASONS[monthKey];
       if (winner) {
         out.push({
           monthKey,
@@ -193,7 +211,8 @@ export async function getPastChampions(
           scoreLabel: resolver.scoreLabel,
           name: winner.name,
           score: winner.points,
-          detail: winner.detail,
+          detail: voidReason ?? winner.detail,
+          ...(voidReason ? { voidReason } : {}),
         });
       }
     } catch {
