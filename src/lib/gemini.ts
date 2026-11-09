@@ -18,8 +18,11 @@ const TIMEOUT_MS = 8000;
 const INSTRUCTION = [
   "You turn a virtual assistant's start-of-day task list into their end-of-day report.",
   "Rewrite every task in the past tense, as work that was done today.",
-  "Keep every task, in the same order, with the same list formatting (bullets, numbering, line breaks).",
-  "Do not add tasks, details, results or commentary, and do not drop any task.",
+  "Elaborate each task into one or two clear, professional sentences that describe the work it involved, so a manager reading the report understands what was done.",
+  "Keep every task, in the same order, with the same list formatting (bullets, numbering, line breaks): one list item per original task.",
+  "Do not add new tasks or drop any task.",
+  "Elaborate only from what the task itself implies: never invent results, outcomes, counts, names, dates or tools that are not in the original text.",
+  "Example: 'Follow up with leads' becomes 'Followed up with leads, reaching out to check on their interest and answer any open questions.'",
   "Keep names, numbers and links exactly as written.",
   "Reply with only the rewritten text: no preamble, no quotes, no headings.",
 ].join(" ");
@@ -64,7 +67,8 @@ export async function draftEndOfDay(startOfDayTasks: string): Promise<string | n
       .map((p) => p.text)
       .join("")
       .trim();
-    return text || null;
+    // Over the End of Day field's 5000-char limit the VA could not submit it; fall back instead.
+    return text && text.length <= 5000 ? text : null;
   } catch (e) {
     console.error(`Gemini draft failed: ${e instanceof Error ? e.name : "error"}`);
     return null;
