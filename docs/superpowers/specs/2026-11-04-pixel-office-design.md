@@ -39,7 +39,7 @@ The art is 1536×1024 (3:2). It is not the 2040×1360 first asked for, and every
 | `fg-lounge.png` | Armchairs and tables (not the rugs). Mask only. | ✅ re-cut 2026-11-09, aligned |
 | `fg-lunch-chairs.png` | All 14 lunch chairs, cut from the bg. Mask only; split into one chair per seat (see Rendering). | ✅ 2026-11-09 |
 | `layout-guide.png` | Green = walkable floor | ✅ |
-| `seats.txt` | Feet points for every spot (format documented in the file) | ✅ re-measured 2026-11-09; L/R/B re-measured from `fg-lunch-chairs.png` the same day; every desk row uses one offset, seat y = monitor top + 66 (exec 277, back row 492, front row 650), so the face, collar and tie show and the monitor edge sits on the chest |
+| `seats.txt` | Feet points for every spot (format documented in the file) | ✅ re-measured 2026-11-09; L/R/B re-measured from `fg-lunch-chairs.png` the same day; the VA rows use one offset, seat y = monitor top + 66 (back row 492, front row 650), so the face, collar and tie show and the monitor edge sits on the chest. The exec row is 12 px lower (289): their tall chairs and deep desks made them look like they floated behind the monitors. In the art each exec monitor sits left of the desk's centre, so the execs are centred on their chair and desk, not the monitor |
 | `characters/<slug>.png` | Sprite sheet built by `scripts/office-sprite.py` from `_chunks/` | All 11 + `_generic` ✅. Kevin, Marc and Tanya have no row 12 and don't need one: they only sit at the top end (row 5). |
 | `_chunks/<slug>-A/B/C/D.png` | Source art for the sprite sheets. Keep this folder. D may be any width: the poses are split at the gaps between them. | Everyone A–D, except Kevin, Marc and Tanya (A–C) |
 

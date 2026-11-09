@@ -13,7 +13,7 @@ describe("seats.txt", () => {
   });
 
   it("reads desk lines with names", () => {
-    expect(seats.D1).toEqual({ x: 652, y: 277, facing: null });
+    expect(seats.D1).toEqual({ x: 652, y: 289, facing: null });
     expect(seats.D11).toEqual({ x: 1006, y: 650, facing: null });
   });
 
