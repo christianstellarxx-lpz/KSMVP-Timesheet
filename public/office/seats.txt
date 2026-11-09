@@ -1,0 +1,48 @@
+# Feet points in the 1536x1024 office art: where the bottom centre of a 144x144
+# character frame is drawn. A word after x y = which way a seated person faces
+# (front = toward the viewer, back = away, left/right = profile, needs chunk D).
+# D desks (sit-typing) | T/L/R/B lunch table: top end, left side, right side,
+# bottom end | A armchairs (sitter drawn over the chair) | G stand-and-talk
+# (G1/G2 and G3/G4 face each other) | C coffee bar | W workout | EXIT, CR doors.
+# L1-L4 and R1-R5 are estimates until chunk D exists to check them.
+D1  Kevin Spann       652 277
+D2  Tanya Crawford    416 277
+D3  Marc              895 277
+D4  Kristine Te       277 492
+D5  Jonathan Sarong   519 492
+D6  Christian Lopez   750 492
+D7  Bryxter Bulisig   990 492
+D8  Gianfranco Adana  255 650
+D9  Jeannyn Jereza    514 650
+D10 Ginger Mesias     755 650
+D11 Venus Paglinawan  1006 650
+T1  1234 450 front
+T2  1288 450 front
+T3  1341 450 front
+L1  1209 492 right
+L2  1221 530 right
+L3  1236 575 right
+L4  1252 622 right
+R1  1384 485 left
+R2  1397 517 left
+R3  1410 549 left
+R4  1427 585 left
+R5  1444 624 left
+B1  1321 665 back
+B2  1398 665 back
+A1  724 900
+A2  925 900
+A3  1145 900
+A4  1355 900
+G1  760 975
+G2  895 975
+G3  1185 975
+G4  1320 975
+C1  1385 318
+C2  1291 322
+C3  1217 315
+W1  101 893
+W2  266 910
+W3  97 946
+EXIT 238 259
+CR   1089 260

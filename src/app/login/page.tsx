@@ -4,6 +4,8 @@ import { Logo } from "@/components/Logo";
 import { QuickLogin, type QuickUser } from "@/components/QuickLogin";
 import { prisma } from "@/lib/prisma";
 import { getSession, homePathForRole } from "@/lib/session";
+import { getOfficePeople } from "@/lib/officeRoster";
+import { OfficePanel } from "@/components/office/OfficePanel";
 
 export const metadata = { title: "Sign in — KSMVP VA Tasks" };
 export const dynamic = "force-dynamic";
@@ -31,11 +33,14 @@ export default async function LoginPage() {
   const session = await getSession();
   if (session) redirect(homePathForRole(session.role));
 
-  const users = await prisma.user.findMany({
-    where: { removedAt: null },
-    select: { id: true, name: true, title: true, role: true },
-    orderBy: { name: "asc" },
-  });
+  const [users, officePeople] = await Promise.all([
+    prisma.user.findMany({
+      where: { removedAt: null },
+      select: { id: true, name: true, title: true, role: true },
+      orderBy: { name: "asc" },
+    }),
+    getOfficePeople(),
+  ]);
 
   const admins = users
     .filter((u) => ADMIN_BOX_ROLES.has(u.role))
@@ -50,28 +55,36 @@ export default async function LoginPage() {
     .map(toQuickUser);
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center px-4 py-10">
-      <div className="w-full max-w-md">
-        <div className="mb-6 flex justify-center">
-          <Logo />
-        </div>
+    // Desktop: the form on the left half, the live office on the right.
+    <main className="min-h-screen lg:grid lg:grid-cols-2">
+      <div className="flex min-h-screen flex-col items-center justify-center px-4 py-10">
+        <div className="w-full max-w-md">
+          <div className="mb-6 flex justify-center">
+            <Logo />
+          </div>
 
-        <div className="mb-5 text-center">
-          <h1 className="text-xl font-bold text-brand-blue-700">Welcome back</h1>
-          <p className="text-sm text-[var(--text-muted)]">
-            Tap your name, then enter your 4-digit PIN.
+          <div className="mb-5 text-center">
+            <h1 className="text-xl font-bold text-brand-blue-700">Welcome back</h1>
+            <p className="text-sm text-[var(--text-muted)]">
+              Tap your name, then enter your 4-digit PIN.
+            </p>
+          </div>
+
+          <QuickLogin admins={admins} team={team} />
+
+          <p className="mt-6 text-center text-xs text-[var(--text-muted)]">
+            <Link href="/" className="hover:text-brand-blue-600">
+              KSMVP VA Tasks
+            </Link>{" "}
+            · We Make AI Easy
           </p>
         </div>
-
-        <QuickLogin admins={admins} team={team} />
-
-        <p className="mt-6 text-center text-xs text-[var(--text-muted)]">
-          <Link href="/" className="hover:text-brand-blue-600">
-            KSMVP VA Tasks
-          </Link>{" "}
-          · We Make AI Easy
-        </p>
       </div>
+      {officePeople && (
+        <div className="hidden items-center p-6 lg:flex">
+          <OfficePanel people={officePeople} />
+        </div>
+      )}
     </main>
   );
 }

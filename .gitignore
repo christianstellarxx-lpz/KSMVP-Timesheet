@@ -33,3 +33,6 @@ yarn-error.log*
 
 # testing
 /coverage
+
+# office source art (kept on disk, never committed or deployed)
+/public/office/_chunks/

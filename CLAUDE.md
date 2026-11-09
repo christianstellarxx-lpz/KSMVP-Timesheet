@@ -32,6 +32,10 @@ npm run setup        # generate + deploy + seed (first-time local setup)
 # Games
 npm run word:schedule                        # print which word lands on which ET day
 npm run word:schedule > docs/word-answer-schedule.md   # regenerate the review doc
+
+# Live office art (Python: pillow, numpy, scipy)
+python scripts/office-sprite.py              # build characters/<slug>.png from _chunks/
+python scripts/office-assets.py              # re-run after any change to public/office art
 ```
 
 There is no ESLint step; `npm run typecheck` is the lint gate. Always run `typecheck` after non-trivial changes.
@@ -55,8 +59,8 @@ Five roles, stored as validated strings (not DB enums): `ADMIN`, `VA_ADMIN`, `VA
 ### Route map (`src/app/`)
 App Router, one area per role. Each area has a `layout.tsx` that runs the auth guard, a `page.tsx` (Server Component that fetches data via a `src/lib/*` module), and often `actions.ts` (Server Actions for mutations).
 - `/` → redirects to role home or `/login`
-- `/login` → PIN login
-- `/va` → VA "my day" dashboard (Start of Day / End of Day, "Plan my week", PTO, admin feedback). Daily Flappy used to render here and is now **hidden** — see the note in `VaDayClient.tsx` for how to bring it back.
+- `/login` → PIN login; on desktop the live office fills the right half
+- `/va` → VA "my day" dashboard (Start of Day / End of Day, "Plan my week", PTO, admin feedback). Daily Flappy used to render here and is now **hidden** — see the note in `VaDayClient.tsx` for how to bring it back. The live office sits under My Day at full shell width (desktop only).
 - `/va/games` → the game / leaderboard page: Reigning Champion spotlight + this month's rotating game (**Trap Shift** from November 2026) + its monthly leaderboard + the "Past champions" wall of fame. The route and its "Games" nav label stay stable across rotations — only the game inside changes.
 - `/client` → org-wide **admin** dashboard (naming is historical — "client" = admin, not a customer). `/client/vas` manages members.
 - `/sales` → Sales Producer's Sales Desk (notices to team channels)
@@ -82,6 +86,13 @@ App Router, one area per role. Each area has a `layout.tsx` that runs the auth g
 - `Notice` — Sales Desk message to a fixed channel (`TECH_SUPPORT` | `ADMIN_INQUIRY`); **one row per recipient** so read-state is per-person.
 - `MiniGameRun` — one ranked run of a **replay-verified** mini-game (Stretch Goal today; deliberately generic, so a future game of the same shape just picks a new `gameKey`). Created **empty at `status: "issued"`** when the server hands out the seed, moved to **`"started"` the instant the player presses Start** (this is what spends the single daily attempt), and filled in at **`"submitted"`** once the replay verifies. That three-phase shape is what makes the seed un-rerollable *and* the attempt un-repeatable. `score` / `perfects` / `tier` are always `simulateRun()`'s output — a client-supplied score is never read. The unique `(userId, gameKey, playedOn)` index is what enforces one ranked run per day; do not weaken it to a UI check.
 - `WordPuzzle`, `WordEntry` and `MiniGameRun` all carry a nullable `organizationId` — unused today (single-tenant), added up front as Phase 4 multi-tenant prep.
+
+### Live office (`src/lib/office/`, `src/components/office/`)
+A watch-only illustrated office of the team on `/login` (right half) and at the bottom of `/va`, desktop (`lg`) only, never on `/client`. Spec: `docs/superpowers/specs/2026-11-04-pixel-office-design.md`.
+- **No state anywhere.** Each viewer computes the same scene from the ET clock: `schedule.ts` plans a person's day from `(ET date, slug)` with a seeded hash (no `Math.random`), `motion.ts` turns that into a position and sprite row at any minute, `path.ts` walks them along `walkable.txt`, `layers.ts` sorts people and furniture by baseline y with the seat overrides. All four are pure and unit-tested. Clicking someone makes them wave, locally only.
+- **Who shows:** `getOfficePeople()` (`src/lib/officeRoster.ts`, server-only) hides removed members and anyone with a PTO entry today. Marc (`marc-fey`, CIO) exists only in `OFFICE_ROSTER` — no account, never hidden. The executives always eat at the top end of the lunch table.
+- **Art pipeline:** source art lives in `public/office/` (`_chunks/` is git-ignored source, never delete it). `scripts/office-sprite.py` builds `characters/<slug>.png` from the chunks; `scripts/office-assets.py` writes everything the browser loads into `public/office/web/` (WebP bg + sheets, `walkable.txt`, the object id map `objects.png` + `objects.json` with the lunch-chair split). Re-run it after any art change; it asserts every lunch seat has one chair. Seat feet points are in `public/office/seats.txt`.
+- **Dev only:** `?office-time=2026-11-09T12:20` on either page starts the office clock at that ET moment.
 
 ### Games & the monthly leaderboard harness
 - **`GAMES_ENABLED`** in `src/lib/features.ts` switches every game off at once (it was off for October 2026, back on in November). While off: no Games nav tab, no game card on My Day, `/va/games` redirects to `/va`, every `/api/minigame/*` route returns 404, and `submitGameScoreAction` refuses. `MAX_ATTEMPTS` beside it is tries-per-day by `gameKey`.
