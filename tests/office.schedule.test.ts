@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { DateTime } from "luxon";
-import { planDay, periodFor, type DayPlan } from "@/lib/office/schedule";
+import { planDay, periodFor, DAY_END, type DayPlan } from "@/lib/office/schedule";
 import { OFFICE_ROSTER, EXEC_LUNCH_SEAT } from "@/lib/office/roster";
 
 const TEAM = OFFICE_ROSTER.map(({ slug, desk }) => ({ slug, desk }));
@@ -46,12 +46,24 @@ describe("planDay", () => {
     }
   });
 
-  it("everyone is gone by 5:15", () => {
-    for (const segs of Object.values(planDay(MON, TEAM))) {
+  it("works until 6 PM: leaves between 6:00 and 6:10, gone by 6:15", () => {
+    for (const [slug, segs] of Object.entries(planDay(MON, TEAM))) {
+      if (slug === "kevin-spann") continue;
       const last = segs[segs.length - 1];
       expect(last.activity).toBe("leave");
       expect(last.spot).toBe("EXIT");
-      expect(last.end).toBeLessThanOrEqual(1035);
+      expect(last.start).toBeGreaterThanOrEqual(1080);
+      expect(last.start).toBeLessThanOrEqual(1090);
+      expect(last.end).toBeLessThanOrEqual(1095);
+      expect(segs.find((s) => s.start <= 1070 && 1070 < s.end)).toBeDefined(); // still in at 5:50 PM
+    }
+  });
+
+  it("Kevin stays at his desk in the evening until 10 PM", () => {
+    for (const date of weekdays(MON, 5)) {
+      const segs = planDay(date, TEAM)["kevin-spann"];
+      expect(segs.find((s) => s.start <= 1290 && 1290 < s.end)).toMatchObject({ activity: "work", spot: "D1" });
+      expect(segs[segs.length - 1]).toMatchObject({ activity: "leave", start: 1320, spot: "EXIT" });
     }
   });
 
@@ -78,7 +90,7 @@ describe("planDay", () => {
     for (const people of [TEAM, crowd])
       for (const date of weekdays(MON, 20)) {
         const plan = planDay(date, people);
-        for (let minute = 495; minute < 1005; minute += 15)
+        for (let minute = 495; minute < DAY_END; minute += 15)
           for (const [spot, who] of occupied(plan, minute)) expect(who, `${date} ${minute} ${spot}`).toHaveLength(1);
       }
   });
@@ -100,7 +112,7 @@ describe("planDay", () => {
   it("talk pairs only form between two people in the same slot", () => {
     for (const date of weekdays(MON, 20)) {
       const plan = planDay(date, TEAM);
-      for (let minute = 495; minute < 1005; minute += 15) {
+      for (let minute = 495; minute < DAY_END; minute += 15) {
         const occ = occupied(plan, minute);
         for (const [a, b] of [["G1", "G2"], ["G3", "G4"]]) expect(occ.has(a)).toBe(occ.has(b));
       }

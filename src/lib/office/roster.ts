@@ -28,6 +28,11 @@ export const EXEC_LUNCH_SEAT: Readonly<Record<string, string>> = {
   "marc-fey": "T3",
 };
 
+/** People who stay past 6 PM, by slug: minutes after ET midnight they walk out. */
+export const LATE_LEAVE: Readonly<Record<string, number>> = {
+  "kevin-spann": 22 * 60, // Kevin works into the evening, until 10 PM
+};
+
 /** Who shows today, by slug: Marc always; everyone else needs an active account and no PTO today. */
 export function visibleMembers(activeSlugs: ReadonlySet<string>, ptoSlugs: ReadonlySet<string>): OfficePersonDTO[] {
   return OFFICE_ROSTER.filter((m) => !m.account || (activeSlugs.has(m.slug) && !ptoSlugs.has(m.slug))).map(

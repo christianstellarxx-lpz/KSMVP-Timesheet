@@ -4,7 +4,7 @@ Status: built 2026-11-09 (not committed). Plan: `docs/superpowers/plans/2026-11-
 
 ## What it is
 
-An illustrated, animated office scene showing the team at work. It is something to watch, not a game. The only interaction is clicking a person, which makes them wave. Mon–Fri, people walk in through the exit door around 8:00 AM ET and leave around 5:00 PM ET. During the day each person works at their desk and now and then gets coffee, eats lunch, sits in the lounge, chats, laughs, works out, or visits the CR (restroom). The background follows the ET clock: sunrise in the morning, blue sky in the afternoon, night skyline in the evening, when the office is always empty.
+An illustrated, animated office scene showing the team at work. It is something to watch, not a game. The only interaction is clicking a person, which makes them wave. Mon–Fri, people walk in through the exit door around 8:00 AM ET and leave around 6:00 PM ET (Kevin stays at his desk until 10:00 PM). During the day each person works at their desk and now and then gets coffee, eats lunch, sits in the lounge, chats, laughs, works out, or visits the CR (restroom). The background follows the ET clock: sunrise in the morning, blue sky in the afternoon, night skyline in the evening, when the office is always empty.
 
 ### Where it shows
 
@@ -34,7 +34,8 @@ The art is 1536×1024 (3:2). It is not the 2040×1360 first asked for, and every
 | File | What it is | Status |
 |---|---|---|
 | `bg-morning.png`, `bg-afternoon.png`, `bg-evening.png` | Full scene, one per time of day | ✅ |
-| `fg-executive.png`, `fg-desks-row1.png`, `fg-desks-row2.png`, `fg-plants.png` | Cutouts, used as masks only (see Rendering) | ⚠️ AI-redrawn, so their edges are a few px off the bg (29–60% of pixels differ). The monitor tops reach ~4 px too high and paint a strip of chair over each sitter's chest. Re-cut from a copy of the bg, as was done for `fg-lunch.png` (0 px off). An automatic rim trim was tried and rejected: it cut away too much. |
+| `fg-desks-row1.png`, `fg-desks-row2.png` | Cutouts, used as masks only (see Rendering) | ✅ re-cut 2026-11-09, match the bg exactly |
+| `fg-executive.png`, `fg-plants.png` | Cutouts, used as masks only | ⚠️ AI-redrawn, so their edges are a few px off the bg (29–60% of pixels differ); the exec monitor tops paint a thin strip of chair over each sitter. Re-cut from a copy of the bg, as was done for the desk rows. An automatic rim trim was tried and rejected: it cut away too much. |
 | `fg-lunch.png` | The table only, without the chairs. Mask only. | ✅ re-cut 2026-11-09, matches the bg exactly |
 | `fg-lounge.png` | Armchairs and tables (not the rugs). Mask only. | ✅ re-cut 2026-11-09, aligned |
 | `fg-lunch-chairs.png` | All 14 lunch chairs, cut from the bg. Mask only; split into one chair per seat (see Rendering). | ✅ 2026-11-09 |
@@ -130,14 +131,14 @@ There are no new routes or actions.
 
 **Day plan per person:**
 1. **Arrive:** between 7:50 and 8:10 AM ET. They walk from EXIT to their desk.
-2. **The day** is split into 15-minute slots from 8:15 AM to 4:45 PM. Each slot is one activity:
+2. **The day** is split into 15-minute slots from 8:15 AM to 5:45 PM. Each slot is one activity:
    - `work` (desk): most slots.
    - `coffee`: about 2 a day.
    - `lunch`: one 45–60 minute block between 11:30 AM and 1:30 PM.
    - `lounge`: armchair, or a talk/laugh pair.
    - `workout`: about 1 a day, not for everyone.
    - `cr`: walk into the CR door, hidden for a few minutes, walk back.
-3. **Leave:** between 5:00 and 5:10 PM ET. They walk from their desk to EXIT and disappear.
+3. **Leave:** between 6:00 and 6:10 PM ET. They walk from their desk to EXIT and disappear. Kevin (`LATE_LEAVE` in `roster.ts`) works at his desk into the evening and leaves at 10:00 PM.
 
 **Shared spots** (lunch chairs, armchairs, talk pairs, coffee, workout):
 - Spots are handed out per slot in roster order. Each person takes the first free spot for their activity; if none is free, they work instead.
@@ -220,7 +221,7 @@ Use `ET_ZONE` and Luxon from `src/lib/time.ts`. Never hardcode an offset.
 - `tests/office.schedule.test.ts`:
   - The same inputs give the same output.
   - Weekends are empty.
-  - Everyone is at their desk by 8:15 AM and gone by 5:15 PM.
+  - Everyone is at their desk by 8:15 AM and gone by 6:15 PM; Kevin is at his desk at 9:30 PM and leaves at 10:00 PM.
   - Nobody shares a spot in any slot.
   - Lunch falls inside 11:30 AM–1:30 PM.
   - A hidden person is never scheduled into a pair.
@@ -233,7 +234,7 @@ Use `ET_ZONE` and Luxon from `src/lib/time.ts`. Never hardcode an offset.
 ## Art still open
 
 Nothing blocks the build. Still open, none of it blocking:
-1. Re-cut `fg-executive.png`, `fg-desks-row1.png`, `fg-desks-row2.png` and `fg-plants.png` from a copy of the bg.
+1. Re-cut `fg-executive.png` and `fg-plants.png` from a copy of the bg.
 2. A render check against the morning and evening backgrounds.
 
 ## Out of scope

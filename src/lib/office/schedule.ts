@@ -3,7 +3,7 @@
 // Times are minutes after ET midnight.
 import { DateTime } from "luxon";
 import { ET_ZONE } from "@/lib/time";
-import { EXEC_LUNCH_SEAT } from "@/lib/office/roster";
+import { EXEC_LUNCH_SEAT, LATE_LEAVE } from "@/lib/office/roster";
 
 export type Activity =
   | "arrive" | "work" | "coffee" | "lunch" | "talk" | "laugh" | "armchair" | "workout" | "cr" | "leave";
@@ -14,7 +14,7 @@ export type Period = "morning" | "afternoon" | "evening";
 
 export const SLOT = 15;
 export const DAY_START = 495; // 8:15 AM
-export const SLOTS = 34; // through 4:45 PM
+export const SLOTS = 38; // through 5:45 PM; everyone leaves at 6:00 PM
 export const DAY_END = DAY_START + SLOT * SLOTS;
 
 const LUNCH_FIRST_SLOT = 13; // 11:30 AM
@@ -57,7 +57,7 @@ type Draw = { arrive: number; leave: number; lunchStart: number; lunchLen: numbe
 function draw(etDate: string, slug: string): Draw {
   const r = mulberry32(fnv1a(`${etDate}|${slug}`));
   const arrive = 470 + Math.floor(r() * 21);
-  const leave = 1020 + Math.floor(r() * 11);
+  const leave = LATE_LEAVE[slug] ?? 1080 + Math.floor(r() * 11);
   const lunchLen = 3 + (r() < 0.5 ? 1 : 0);
   const lunchStart = LUNCH_FIRST_SLOT + Math.floor(r() * (LUNCH_LAST_END - lunchLen - LUNCH_FIRST_SLOT + 1));
   const free = Array.from({ length: SLOTS }, (_, k) => k).filter((k) => k < lunchStart || k >= lunchStart + lunchLen);
