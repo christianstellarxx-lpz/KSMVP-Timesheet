@@ -1,3 +1,5 @@
+import { MAX_ATTEMPTS_PER_DAY as TRAP_SHIFT_TRIES } from "@/lib/trapshift/trapShiftCore";
+
 /**
  * App-wide feature switches. Plain constants — flip one and redeploy.
  */
@@ -17,10 +19,11 @@ export const GAMES_ENABLED = true;
 
 /**
  * Tries per VA per ET day, by `MiniGameRun.gameKey`. The database backs the
- * ceiling (a CHECK caps attemptNo at 3); this map is what the game code reads.
+ * ceiling (a CHECK caps attemptNo at 5); this map is what the game code reads.
+ * Trap Shift's number comes from its current core so it lives in one place.
  * Archived one-run games stay at 1 — their code only ever issues attempt 1.
  */
 export const MAX_ATTEMPTS = {
   "stretch-goal": 1,
-  "trap-shift": 3,
+  "trap-shift": TRAP_SHIFT_TRIES,
 } as const;

@@ -14,7 +14,8 @@ export const dynamic = "force-dynamic";
  *
  * THE CLIENT'S SCORE IS NEVER READ. The schema has no score, seed, routes,
  * attempt or date field, and Zod strips anything extra. `scoreTrapRun` replays
- * the log on the stored seed and routes and stores that result.
+ * the log on the stored seed, routes and save point, on the core of the row's
+ * own version, and stores that result.
  */
 const SCORE_LIMIT = 10;
 const SCORE_WINDOW_MS = 60_000;
@@ -81,9 +82,9 @@ export async function POST(req: NextRequest) {
   const result = await scoreTrapRun(userId, parsed.data.runId, parsed.data.log);
   if (!result.ok) return reject(userId, result.status, result.message, result.reason);
 
-  const { score, cleared, ended, cause, todayBest, seasonTotal, attemptsLeft, rank } = result;
+  const { score, cleared, ended, cause, todayBest, seasonBest, attemptsLeft, nextStartCp, rank } = result;
   return NextResponse.json(
-    { score, cleared, ended, cause, todayBest, seasonTotal, attemptsLeft, rank },
+    { score, cleared, ended, cause, todayBest, seasonBest, attemptsLeft, nextStartCp, rank },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

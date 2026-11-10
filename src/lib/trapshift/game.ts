@@ -12,35 +12,37 @@ import {
   monthLabel,
   type MonthKey,
 } from "@/lib/leaderboards/months";
-import {
-  PERFECT_SCORE,
-  REPLAY_VERSION,
-  STEP_HZ,
-  routesFor,
-  simulateRun,
-  validateLog,
-  type InputLog,
-  type Route,
-} from "./trapShiftCore";
+import * as coreV1 from "./trapShiftCore.v1";
+import * as coreV3 from "./trapShiftCore";
+import { MAX_SCORE, STEP_HZ, routesFor, validateLog, type InputLog, type Route } from "./trapShiftCore";
 import { looksScripted } from "./flags";
 
 /**
  * Trap Shift — server-authoritative game module.
  *
- * The browser decides nothing that counts. The server issues every try (seed
- * and routes stored on the row), replays the player's input log through the
- * same trapShiftCore the client played, and stores that replay's result.
+ * The browser decides nothing that counts. The server issues every try (seed,
+ * routes and save point stored on the row), replays the player's input log
+ * through the core of the row's own replayVersion, and stores that result.
  *
  * What enforces what:
  *  - Tries per day: one row per try, UNIQUE (userId, gameKey, playedOn,
- *    attemptNo) plus CHECK (attemptNo BETWEEN 1 AND 3). `startTrapRun` also
+ *    attemptNo) plus CHECK (attemptNo BETWEEN 1 AND 5). `startTrapRun` also
  *    counts, but the database is the backstop.
- *  - Score: `simulateRun(row.seed, row.routes, log)`. No client score, seed,
- *    routes, attempt number or date is ever read.
+ *  - Score: the row's core replaying `log` from the row's seed, routes and
+ *    startCp. No client score, seed, routes, save point, attempt or date is read.
+ *  - Save point: the furthest checkpoint any verified v3 try reached today.
  *  - Refresh-to-retry: a new start abandons the open try, which still counts.
  */
 
 export const TRAP_GAME_KEY = "trap-shift";
+
+/**
+ * Every Trap Shift core that was ever live, by REPLAY_VERSION. A row is always
+ * replayed with the core of its own version — old rows are never re-scored on
+ * a newer core. (v2 was never released, so there is no v2.)
+ */
+export const CORES = { 1: coreV1, 3: coreV3 } as const;
+export const CURRENT_REPLAY_VERSION = coreV3.REPLAY_VERSION;
 
 /**
  * Row lifecycle for Trap Shift. "started" means the same thing it does for
@@ -60,7 +62,8 @@ export const REALTIME_SLACK_S = 5;
 const SEED_EXCLUSIVE_MAX = 2 ** 31;
 
 const UNLOCK_MESSAGE = "Send your Start of Day to unlock today’s tries.";
-const OUT_MESSAGE = "You used all 3 tries today. Come back tomorrow.";
+const OUT_MESSAGE = `You used all ${MAX_TRIES} tries today. Come back tomorrow.`;
+const UPDATE_MESSAGE = "Trap Shift was updated. Reload the page to play the new version.";
 const RETRY_MESSAGE =
   "The server was waking up and didn’t respond in time. Please try again in a moment.";
 
@@ -74,85 +77,113 @@ class PlayerError extends Error {
   }
 }
 
-type Fail = { ok: false; status: number; message: string };
+type Fail = { ok: false; status: number; message: string; code?: string };
+type Db = Prisma.TransactionClient | typeof prisma;
+
+/** What a v3 score means: "Level 2 · 47%", or "Finished" at 300. */
+export function reachLabel(score: number): string {
+  if (score >= MAX_SCORE) return "Finished";
+  if (score <= 100) return `Level 1 · ${score}%`;
+  if (score <= 200) return `Level 2 · ${score - 100}%`;
+  return `Level 3 · ${score - 200}%`;
+}
+
+/** Replays a row on the core of its own version. null = no core for that version. */
+function replay(
+  run: { replayVersion: number; seed: number; routes: Prisma.JsonValue; startCp: number },
+  log: InputLog,
+) {
+  const routes = run.routes as Route[];
+  if (run.replayVersion === 3) return CORES[3].simulateRun(run.seed, routes, log, run.startCp);
+  if (run.replayVersion === 1) return { ...CORES[1].simulateRun(run.seed, routes, log), checkpoint: null };
+  return null;
+}
+
+/**
+ * The save point the VA's next try today starts from: the furthest checkpoint
+ * any verified try on the current core reached today. Abandoned tries never
+ * count — they were never replayed. Resets with the ET day.
+ */
+async function nextStartCp(db: Db, userId: string, playedOn: Date): Promise<number> {
+  const agg = await db.miniGameRun.aggregate({
+    where: {
+      userId,
+      gameKey: TRAP_GAME_KEY,
+      playedOn,
+      status: RUN_SUBMITTED,
+      replayVersion: CURRENT_REPLAY_VERSION,
+    },
+    _max: { checkpointReached: true },
+  });
+  return agg._max.checkpointReached ?? 0;
+}
 
 // ---------------------------------------------------------------------------
-// Season board — sum of each VA's daily best
+// Season board — each VA's best single try (v3 rows only)
 // ---------------------------------------------------------------------------
 
 export interface TrapBoardRow {
   rank: number;
   userId: string;
   name: string;
-  /** Sum of daily bests this season. */
-  total: number;
-  /** Levels cleared across the runs that make up `total`. */
-  cleared: number;
-  /** Days with at least one submitted try. */
-  days: number;
+  /** Best single try this season, 0..300. */
+  best: number;
+  /** Frames of the try that set `best` — the tiebreak (faster wins). */
+  frames: number;
+  /** What `best` means: "Level 2 · 47%" / "Finished". */
+  reached: string;
   /** Best try today, or null if none (always null for a past season). */
   todayBest: number | null;
 }
 
+type BoardRow = { score: number; frames: number; submittedAt: Date | null };
+/** Higher score, then the faster run, then whoever got there first. */
+const better = (a: BoardRow, b: BoardRow) =>
+  b.score - a.score || a.frames - b.frames || (a.submittedAt?.getTime() ?? 0) - (b.submittedAt?.getTime() ?? 0);
+
 /**
- * For each VA: the max score per day among submitted tries, summed over the
- * season. Ranked by total, then levels cleared, then whoever reached their
- * total earliest.
- *
- * Reduced in JS: rows are bounded by team size x days x 3, and "the best row
- * per day, then a sum" is not one groupBy.
+ * Only rows on replayVersion >= 3 count: that filter is what started the board
+ * fresh when v3 went live. Older rows stay in the table and stay verifiable.
+ * Nothing is summed — a VA's score is their single best try.
  */
 export async function getTrapBoard(
   season: MonthKey,
   today: EtDateString = etToday(),
 ): Promise<TrapBoardRow[]> {
   const rows = await prisma.miniGameRun.findMany({
-    where: { gameKey: TRAP_GAME_KEY, season, status: RUN_SUBMITTED },
+    where: { gameKey: TRAP_GAME_KEY, season, status: RUN_SUBMITTED, replayVersion: { gte: 3 } },
     select: {
       userId: true,
       score: true,
-      cleared: true,
+      frames: true,
       playedOn: true,
       submittedAt: true,
       user: { select: { name: true } },
     },
   });
 
-  // Best try per (VA, day); a tie goes to the earlier submission.
+  const todayMs = etDateStringToStorageDate(today).getTime();
   const best = new Map<string, (typeof rows)[number]>();
+  const todayBest = new Map<string, number>();
   for (const row of rows) {
-    const key = `${row.userId}|${row.playedOn.toISOString()}`;
-    const cur = best.get(key);
-    const at = row.submittedAt?.getTime() ?? 0;
-    if (!cur || row.score > cur.score || (row.score === cur.score && at < (cur.submittedAt?.getTime() ?? 0))) {
-      best.set(key, row);
+    const cur = best.get(row.userId);
+    if (!cur || better(row, cur) < 0) best.set(row.userId, row);
+    if (row.playedOn.getTime() === todayMs) {
+      todayBest.set(row.userId, Math.max(todayBest.get(row.userId) ?? 0, row.score));
     }
   }
 
-  const todayMs = etDateStringToStorageDate(today).getTime();
-  const agg = new Map<string, TrapBoardRow & { reachedAt: number }>();
-  for (const row of best.values()) {
-    const a =
-      agg.get(row.userId) ??
-      { rank: 0, userId: row.userId, name: row.user.name, total: 0, cleared: 0, days: 0, todayBest: null, reachedAt: 0 };
-    a.total += row.score;
-    a.cleared += row.cleared;
-    a.days += 1;
-    // A zero day adds nothing, so it does not move when the total was reached.
-    if (row.score > 0) a.reachedAt = Math.max(a.reachedAt, row.submittedAt?.getTime() ?? 0);
-    if (row.playedOn.getTime() === todayMs) a.todayBest = row.score;
-    agg.set(row.userId, a);
-  }
-
-  return [...agg.values()]
-    .sort(
-      (a, b) =>
-        b.total - a.total ||
-        b.cleared - a.cleared ||
-        a.reachedAt - b.reachedAt ||
-        a.name.localeCompare(b.name),
-    )
-    .map(({ reachedAt: _reachedAt, ...row }, i) => ({ ...row, rank: i + 1 }));
+  return [...best.values()]
+    .sort((a, b) => better(a, b) || a.user.name.localeCompare(b.user.name))
+    .map((r, i) => ({
+      rank: i + 1,
+      userId: r.userId,
+      name: r.user.name,
+      best: r.score,
+      frames: r.frames,
+      reached: reachLabel(r.score),
+      todayBest: todayBest.get(r.userId) ?? null,
+    }));
 }
 
 // ---------------------------------------------------------------------------
@@ -164,7 +195,10 @@ export interface TrapSession {
   attemptsUsed: number;
   attemptsLeft: number;
   todayBest: number | null;
-  seasonTotal: number;
+  /** Best single try this season, or null if none yet. */
+  seasonBest: number | null;
+  /** Save point the next try starts from (0..5). */
+  nextStartCp: number;
   runsToday: { attemptNo: number; score: number; ended: string | null }[];
   season: MonthKey;
 }
@@ -174,23 +208,26 @@ async function loadState(userId: string) {
   const season = etCurrentMonthKey();
   const playedOn = etDateStringToStorageDate(today);
 
-  const [unlocked, runs, board] = await Promise.all([
+  const [unlocked, runs, board, startCp] = await Promise.all([
     isUnlockedToday(userId),
     prisma.miniGameRun.findMany({
       where: { userId, gameKey: TRAP_GAME_KEY, playedOn },
       orderBy: { attemptNo: "asc" },
-      select: { attemptNo: true, score: true, ended: true, status: true },
+      select: { attemptNo: true, score: true, ended: true, status: true, replayVersion: true },
     }),
     getTrapBoard(season, today),
+    nextStartCp(prisma, userId, playedOn),
   ]);
 
-  const submitted = runs.filter((r) => r.status === RUN_SUBMITTED);
+  // Every try today counts toward the 5, but only v3 scores are on the v3 scale.
+  const submitted = runs.filter((r) => r.status === RUN_SUBMITTED && r.replayVersion >= 3);
   const session: TrapSession = {
     unlocked,
     attemptsUsed: runs.length,
     attemptsLeft: Math.max(0, MAX_TRIES - runs.length),
     todayBest: submitted.length ? Math.max(...submitted.map((r) => r.score)) : null,
-    seasonTotal: board.find((r) => r.userId === userId)?.total ?? 0,
+    seasonBest: board.find((r) => r.userId === userId)?.best ?? null,
+    nextStartCp: startCp,
     runsToday: runs.map((r) => ({
       attemptNo: r.attemptNo,
       score: r.score,
@@ -210,20 +247,26 @@ export async function getTrapSession(userId: string): Promise<TrapSession> {
 // ---------------------------------------------------------------------------
 
 export type StartTrapResult =
-  | { ok: true; runId: string; seed: number; routes: Route[]; attemptNo: number; attemptsLeft: number }
+  | { ok: true; runId: string; seed: number; routes: Route[]; attemptNo: number; attemptsLeft: number; startCp: number }
   | Fail;
 
 /**
- * Issue the next try. In one transaction, serialised per VA by a row lock on
- * their User row so parallel starts queue rather than race:
+ * Issue the next try. A client on an older core is refused (409
+ * update_required) before anything is read or written. Then, in one
+ * transaction, serialised per VA by a row lock on their User row so parallel
+ * starts queue rather than race:
  *  - count today's tries; at the cap, refuse (409) without touching anything,
  *    so a stray request cannot kill a try that is still being played;
  *  - abandon any open try at 0 — it still counts (this is "refresh to retry");
- *  - insert the next attemptNo with a server seed and routesFor().
+ *  - pick the save point from today's verified tries (never from the client);
+ *  - insert the next attemptNo with a server seed, routesFor() and that startCp.
  * If the lock were ever bypassed, the unique index turns a lost race into P2002
- * (409) and the CHECK refuses a 4th row.
+ * (409) and the CHECK refuses a 6th row.
  */
-export async function startTrapRun(userId: string): Promise<StartTrapResult> {
+export async function startTrapRun(userId: string, clientVersion: unknown): Promise<StartTrapResult> {
+  if (clientVersion !== CURRENT_REPLAY_VERSION) {
+    return { ok: false, status: 409, code: "update_required", message: UPDATE_MESSAGE };
+  }
   const today = etToday();
   const playedOn = etDateStringToStorageDate(today);
 
@@ -252,9 +295,10 @@ export async function startTrapRun(userId: string): Promise<StartTrapResult> {
           attemptNo,
           seed: randomInt(0, SEED_EXCLUSIVE_MAX),
           routes: routesFor(attemptNo, today),
+          startCp: await nextStartCp(tx, userId, playedOn),
           status: RUN_STARTED,
           startedAt: new Date(),
-          replayVersion: REPLAY_VERSION,
+          replayVersion: CURRENT_REPLAY_VERSION,
         },
       });
     });
@@ -266,6 +310,7 @@ export async function startTrapRun(userId: string): Promise<StartTrapResult> {
       routes: run.routes as Route[],
       attemptNo: run.attemptNo,
       attemptsLeft: MAX_TRIES - run.attemptNo,
+      startCp: run.startCp,
     };
   } catch (e) {
     if (e instanceof PlayerError) return { ok: false, status: e.status, message: e.message };
@@ -288,8 +333,9 @@ export type ScoreTrapResult =
       ended: string;
       cause: string | null;
       todayBest: number | null;
-      seasonTotal: number;
+      seasonBest: number | null;
       attemptsLeft: number;
+      nextStartCp: number;
       rank: number | null;
     }
   | (Fail & { reason: string });
@@ -328,7 +374,8 @@ export async function scoreTrapRun(
     if (shapeError) return fail(400, "That replay wasn’t valid.", `invalid_log: ${shapeError}`);
     const inputLog = log as InputLog;
 
-    const r = simulateRun(run.seed, run.routes as Route[], inputLog);
+    const r = replay(run, inputLog);
+    if (!r) return fail(409, "That try can’t be verified.", `unknown_replay_version:${run.replayVersion}`);
 
     // A log that claims more play than real time allows was generated, not played.
     const elapsedS = elapsedMs / 1000;
@@ -349,7 +396,8 @@ export async function scoreTrapRun(
     }
 
     const reasons: string[] = [];
-    if (r.points === PERFECT_SCORE) reasons.push("perfect run");
+    if (run.replayVersion === 3 && r.points === CORES[3].MAX_SCORE) reasons.push("finished run");
+    if (run.replayVersion === 1 && r.points === CORES[1].PERFECT_SCORE) reasons.push("perfect run");
     if (looksScripted(inputLog)) reasons.push("input timing looks scripted");
 
     const written = await prisma.miniGameRun.updateMany({
@@ -362,7 +410,7 @@ export async function scoreTrapRun(
         frames: r.frames,
         ended: r.ended,
         cause: r.cause,
-        replayVersion: r.replayVersion,
+        checkpointReached: r.checkpoint,
         status: RUN_SUBMITTED,
         submittedAt: now,
         flagged: reasons.length > 0,
@@ -382,8 +430,9 @@ export async function scoreTrapRun(
       ended: r.ended,
       cause: r.cause,
       todayBest: session.todayBest,
-      seasonTotal: session.seasonTotal,
+      seasonBest: session.seasonBest,
       attemptsLeft: session.attemptsLeft,
+      nextStartCp: session.nextStartCp,
       rank: board.find((b) => b.userId === userId)?.rank ?? null,
     };
   } catch {
@@ -398,7 +447,8 @@ export async function scoreTrapRun(
 export interface TrapRailRow {
   rank: number;
   name: string;
-  seasonTotal: number;
+  best: number;
+  reached: string;
   todayBest: number | null;
   isYou: boolean;
 }
@@ -409,7 +459,8 @@ export function toRail(board: TrapBoardRow[], meId: string, size = 10): TrapRail
   return rows.map((r) => ({
     rank: r.rank,
     name: r.name,
-    seasonTotal: r.total,
+    best: r.best,
+    reached: r.reached,
     todayBest: r.todayBest,
     isYou: r.userId === meId,
   }));
@@ -420,14 +471,28 @@ export interface TrapPageState {
   rail: TrapRailRow[];
   seasonLabel: string;
   today: EtDateString;
+  /** The one-time v3 "new rules" banner, until this VA dismisses it. */
+  showNewRules: boolean;
 }
 
 export async function getTrapPageState(userId: string): Promise<TrapPageState> {
-  const { session, board } = await loadState(userId);
+  const [{ session, board }, user] = await Promise.all([
+    loadState(userId),
+    prisma.user.findUnique({ where: { id: userId }, select: { trapShiftV3SeenAt: true } }),
+  ]);
   return {
     session,
     rail: toRail(board, userId),
     seasonLabel: `${monthLabel(session.season).split(" ")[0]} Season`,
     today: etToday(),
+    showNewRules: !user?.trapShiftV3SeenAt,
   };
+}
+
+/** "Got it" on the new-rules banner. Idempotent. */
+export async function markNewRulesSeen(userId: string): Promise<void> {
+  await prisma.user.updateMany({
+    where: { id: userId, trapShiftV3SeenAt: null },
+    data: { trapShiftV3SeenAt: new Date() },
+  });
 }

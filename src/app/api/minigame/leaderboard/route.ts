@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * GET /api/minigame/leaderboard?season=YYYY-MM — the Trap Shift season board:
- * each VA's daily bests summed over the season, with today's best and the
+ * each VA's best single try (v3 rows), with today's best and the
  * caller's own row flagged. `season` defaults to the current ET month.
  */
 export async function GET(req: NextRequest) {

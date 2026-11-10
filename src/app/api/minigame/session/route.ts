@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * GET /api/minigame/session — this VA's Trap Shift tries for today:
- * `{ unlocked, attemptsUsed, attemptsLeft, todayBest, seasonTotal, runsToday, season }`.
+ * `{ unlocked, attemptsUsed, attemptsLeft, todayBest, seasonBest, nextStartCp, runsToday, season }`.
  *
  * No seed here, ever: a seed is handed out only by POST /start, with the try.
  * Outside the middleware matcher, so it answers 401/403 as JSON itself.

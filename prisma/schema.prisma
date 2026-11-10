@@ -41,6 +41,9 @@ model User {
   // that away, and the seed's upsert would re-create a seeded member anyway.
   removedAt DateTime?
 
+  // When this VA dismissed the one-time "Trap Shift: new rules" banner (v3).
+  trapShiftV3SeenAt DateTime?
+
   // Reserved for future per-manager assignment; not used for scoping today
   // (the admin dashboard is org-wide). Kept as a self-relation.
   clientId String?
@@ -288,9 +291,15 @@ model MiniGameRun {
   // when the try is issued and replayed from here — never from the request.
   routes Json?
 
-  // Trap Shift: which try of the day this is, 1..3. A CHECK constraint in the
-  // migration caps it at 3; one-run games (Stretch Goal) only ever write 1.
+  // Trap Shift: which try of the day this is, 1..5. A CHECK constraint in the
+  // migration caps it at 5; one-run games (Stretch Goal) only ever write 1.
   attemptNo Int @default(1)
+
+  // Trap Shift v3 save points (0 L1 start .. 5 L3 half). startCp is chosen by
+  // the server at /start from today's verified tries (CHECK 0..5);
+  // checkpointReached is the replay's own output. null on v1 rows.
+  startCp           Int  @default(0) @db.SmallInt
+  checkpointReached Int? @db.SmallInt
 
   // All three are simulateRun()'s output, computed server-side.
   score    Int @default(0)
@@ -337,7 +346,7 @@ model MiniGameRun {
   updatedAt DateTime @updatedAt
 
   // THE tries-per-day rule. Enforced by the database, not the UI: one row per
-  // try, and the attemptNo CHECK (1..3) means no fourth row can exist.
+  // try, and the attemptNo CHECK (1..5) means no sixth row can exist.
   @@unique([userId, gameKey, playedOn, attemptNo])
   @@index([gameKey, season])
   @@index([userId])

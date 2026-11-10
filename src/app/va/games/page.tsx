@@ -42,7 +42,7 @@ export default async function GamesPage() {
           This month’s game
         </h1>
         <p className="text-sm text-[var(--text-muted)]">
-          {formatEtDateLong(trap.today)} · three tries a day, once you’ve sent
+          {formatEtDateLong(trap.today)} · five tries a day, once you’ve sent
           your Start of Day
         </p>
       </div>
@@ -51,6 +51,7 @@ export default async function GamesPage() {
         initialSession={trap.session}
         initialRail={trap.rail}
         seasonLabel={trap.seasonLabel}
+        showNewRules={trap.showNewRules}
       />
 
       <PastChampions champions={pastChampions} />

@@ -4,9 +4,14 @@ import type { MonthKey } from "./months";
 import type { GameResolver, MonthlyLeaderRow } from "./types";
 
 /**
- * Trap Shift — monthly scoring resolver. The season score is the sum of each
- * VA's daily best try; the ranking is `getTrapBoard`'s, so the game page, the
- * Reigning Champion box and the wall of fame can never disagree.
+ * Trap Shift — monthly scoring resolver. A VA's season score is their best
+ * single try (v3 rows only, ties to the faster run); the ranking is
+ * `getTrapBoard`'s, so the game page, the Reigning Champion box and the wall of
+ * fame can never disagree.
+ *
+ * There is no v1 resolver: v3 went live in November 2026, Trap Shift's first
+ * season, so no season was ever scored the v1 way. The v1 core stays so those
+ * rows remain verifiable.
  */
 export async function resolveTrapMonthly(monthKey: MonthKey): Promise<MonthlyLeaderRow[]> {
   const board = await getTrapBoard(monthKey);
@@ -14,16 +19,16 @@ export async function resolveTrapMonthly(monthKey: MonthKey): Promise<MonthlyLea
     rank: r.rank,
     userId: r.userId,
     name: r.name,
-    points: r.total,
-    detail: `${r.cleared} level${r.cleared === 1 ? "" : "s"} cleared · ${r.days} day${r.days === 1 ? "" : "s"}`,
+    points: r.best,
+    detail: r.reached,
   }));
 }
 
 export const trapShiftResolver: GameResolver = {
   id: "TRAP",
   name: "Trap Shift",
-  scoreLabel: "SEASON TOTAL",
-  tagline: "Three levels. Zero trust. Three tries a day — your best try counts toward the season.",
+  scoreLabel: "BEST TRY",
+  tagline: "Three levels. Zero trust. Five tries a day — your best single try is your score.",
   icon: "🪤",
   resolveMonthly: resolveTrapMonthly,
 };

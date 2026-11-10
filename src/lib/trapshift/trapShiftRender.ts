@@ -2,8 +2,27 @@
  * Trap Shift: canvas renderer. Browser only. Never imported by the server.
  * Draws a RunState from trapShiftCore and keeps cosmetic effects (particles, shake)
  * that are allowed to use Math.random because they never affect the simulation.
+ *
+ * The Collector uses an uploaded image when one is loaded with loadMonsterImage().
+ * Until it loads (or if it fails), a drawn fallback head is used, so the game never breaks.
  */
-import { W, H, G, currentPoints, levelPct, type RunState, type FxEvent, type Solid, type Faller, type Spike, type Proj } from "./trapShiftCore";
+import { W, H, G, currentPoints, levelPct, type RunState, type FxEvent, type Solid, type Faller, type Spike, type Proj, type Monster, type Bag } from "./trapShiftCore";
+
+/* ---------- monster image ---------- */
+let monsterImg: HTMLImageElement | null = null;
+/** Set to true if the uploaded head art faces right, so it gets mirrored to face the player. */
+export let MONSTER_ART_FACES_RIGHT = false;
+export function setMonsterArtFacesRight(v: boolean) { MONSTER_ART_FACES_RIGHT = v; }
+/** Preload the Collector art. Resolves true when ready, false if it failed (the fallback head is used). */
+export function loadMonsterImage(src: string): Promise<boolean> {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.decoding = "async";
+    img.onload = () => { monsterImg = img; resolve(true); };
+    img.onerror = () => resolve(false);
+    img.src = src;
+  });
+}
 
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; c: string }
 
@@ -11,6 +30,7 @@ export class Fx {
   particles: Particle[] = [];
   shake = 0;
   tick = 0;
+  saveToast = 0;   // frames left on the "SAVE POINT REACHED" banner
   /** Call after every core step(); drains the run's event queue. */
   consume(s: RunState) {
     if (!s.events) return;
@@ -20,6 +40,8 @@ export class Fx {
   private apply(e: FxEvent) {
     if (e.t === "burst") for (let i = 0; i < e.n; i++) this.particles.push({ x: e.x, y: e.y, vx: (Math.random() - 0.5) * 7, vy: -Math.random() * 7, life: 40 + Math.random() * 20, c: e.c });
     if (e.t === "shake") this.shake = Math.max(this.shake, e.n);
+    if (e.t === "monsterThrow") this.shake = Math.max(this.shake, 4);
+    if (e.t === "savePoint") this.saveToast = 100;
   }
   /** Call once per fixed step, including while the death animation plays. */
   update() {
@@ -27,6 +49,7 @@ export class Fx {
     for (const q of this.particles) { q.x += q.vx; q.y += q.vy; q.vy += 0.35; q.life--; }
     this.particles = this.particles.filter(q => q.life > 0);
     if (this.shake > 0) this.shake--;
+    if (this.saveToast > 0) this.saveToast--;
   }
 }
 
@@ -50,10 +73,16 @@ export function drawFrame(ctx: CanvasRenderingContext2D, canvasWidth: number, s:
     const ox = b.kind === "delay" && (b.timer ?? 0) > 0 ? (Math.random() - 0.5) * 4 : 0;
     ctx.save(); ctx.translate(ox, 0); drawGround(ctx, b); ctx.restore();
   }
+  if (s.burnX !== null) drawBurn(ctx, s.burnX, cam, fx.tick);
   for (const f of lv.fallers) drawCabinet(ctx, f);
   for (const k of lv.spikes) if (k.hgt > 0) drawSpikes(ctx, k);
-  drawFlag(ctx, lv.goal.x, fx.tick);
+  drawSavePost(ctx, s.def.save, s.cpReached >= s.li * 2 + 1, fx.tick);
+  for (const dx of lv.decoys ?? []) drawFlag(ctx, dx, fx.tick);   // identical to the real flag on purpose
+  if (lv.goalShown) drawFlag(ctx, lv.goal.x, fx.tick);   // hidden until the player is past every decoy
+  if (s.mon && s.def.mon) drawMonster(ctx, s.mon, s.def.mon.windup, fx.tick);
   for (const q of s.proj) drawThrown(ctx, q);
+  for (const b of s.bags) drawLandingMark(ctx, b, fx.tick);
+  for (const b of s.bags) drawBag(ctx, b);
   if (lv.wall && lv.wall.phase === "go") drawWall(ctx, lv.wall.x as number);
   if (!opts.dying) drawPlayer(ctx, s);
   for (const q of fx.particles) { ctx.globalAlpha = Math.max(0, q.life / 50); ctx.fillStyle = q.c; ctx.fillRect(q.x - 3, q.y - 3, 6, 6); }
@@ -71,7 +100,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, canvasWidth: number, s:
       drawWarnSign(ctx, wx, wy);
     }
   }
-  if (opts.showHud !== false) drawHud(ctx, s);
+  if (opts.showHud !== false) drawHud(ctx, s, fx);
 }
 
 function drawSkyline(ctx: CanvasRenderingContext2D, cam: number) {
@@ -126,6 +155,84 @@ function drawThrown(ctx: CanvasRenderingContext2D, q: Proj) {
   if (!q.stuck) { ctx.strokeStyle = "rgba(255,255,255,.35)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(L + 4, 0); ctx.lineTo(L + 18, 0); ctx.stroke(); }
   ctx.restore();
 }
+const HEAD = 180;   // drawn size of the Collector, world pixels (core hitbox is 128 x 122)
+function drawMonster(ctx: CanvasRenderingContext2D, m: Monster, windup: number, tick: number) {
+  const charging = m.state === "windup" ? 1 - m.t / windup : 0;
+  const jx = charging > 0 ? (Math.random() - 0.5) * (2 + charging * 8) : 0;
+  const jy = charging > 0 ? (Math.random() - 0.5) * (2 + charging * 6) : 0;
+  const scale = 1 + charging * 0.12 + (m.state === "laugh" ? Math.abs(Math.sin(tick / 3)) * 0.05 : 0);
+  ctx.save();
+  ctx.translate(m.x + jx, m.y + jy);
+  // red glow while winding up: this is the warning
+  if (charging > 0) {
+    const r = HEAD * (0.55 + charging * 0.35);
+    const glow = ctx.createRadialGradient(0, 0, r * 0.2, 0, 0, r);
+    glow.addColorStop(0, `rgba(255,60,40,${0.35 + charging * 0.4})`); glow.addColorStop(1, "rgba(255,60,40,0)");
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.scale(scale, scale);
+  if (monsterImg) {
+    if (MONSTER_ART_FACES_RIGHT) ctx.scale(-1, 1);
+    ctx.drawImage(monsterImg, -HEAD / 2, -HEAD / 2, HEAD, HEAD);
+  } else { ctx.scale(HEAD / 124, HEAD / 124); drawFallbackHead(ctx, charging, m.state === "laugh"); }
+  ctx.restore();
+  if (m.state === "laugh") {
+    ctx.fillStyle = "#FBCE1B"; ctx.font = "800 18px Poppins, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("HA HA HA", m.x, m.y - HEAD / 2 - 14 + Math.sin(tick / 4) * 3); ctx.textAlign = "left";
+  }
+}
+/** Original placeholder head: horned, glowing eyes, jagged grin. Used until the uploaded art loads. */
+function drawFallbackHead(ctx: CanvasRenderingContext2D, charging: number, laughing: boolean) {
+  ctx.fillStyle = "#2B1A3D";
+  ctx.beginPath(); ctx.moveTo(-34, -40); ctx.lineTo(-50, -66); ctx.lineTo(-22, -48); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(34, -40); ctx.lineTo(50, -66); ctx.lineTo(22, -48); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#3D2457"; ctx.beginPath(); ctx.ellipse(0, 0, 54, 50, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#2B1A3D"; ctx.beginPath(); ctx.ellipse(0, 22, 44, 22, 0, 0, Math.PI); ctx.fill();
+  const eye = charging > 0 ? "#FF3B2F" : "#FBCE1B";
+  ctx.fillStyle = eye;
+  ctx.beginPath(); ctx.moveTo(-34, -14); ctx.lineTo(-10, -6); ctx.lineTo(-30, 2); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(34, -14); ctx.lineTo(10, -6); ctx.lineTo(30, 2); ctx.closePath(); ctx.fill();
+  const open = 8 + charging * 14 + (laughing ? 8 : 0);
+  ctx.fillStyle = "#0E0716"; ctx.beginPath(); ctx.ellipse(0, 22, 30, open, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#F2F3FA";
+  for (let i = -24; i <= 18; i += 10) { ctx.beginPath(); ctx.moveTo(i, 22 - open + 2); ctx.lineTo(i + 5, 22 - open + 10); ctx.lineTo(i + 10, 22 - open + 2); ctx.closePath(); ctx.fill(); }
+}
+/** Bags are thrown at random spots, so show where each one will come down. */
+function drawLandingMark(ctx: CanvasRenderingContext2D, b: Bag, tick: number) {
+  const near = Math.max(0, Math.min(1, (b.y + 120) / (G + 60)));
+  const r = 8 + near * 10;
+  ctx.globalAlpha = 0.45 + 0.35 * Math.abs(Math.sin(tick / 4));
+  ctx.fillStyle = "rgba(194,55,43,.55)"; ctx.beginPath(); ctx.ellipse(b.tx, G + 2, r * 1.6, r * 0.45, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = "#FF6B5B"; ctx.lineWidth = 2; ctx.beginPath();
+  ctx.moveTo(b.tx - 6, G - 6); ctx.lineTo(b.tx + 6, G + 6); ctx.moveTo(b.tx + 6, G - 6); ctx.lineTo(b.tx - 6, G + 6); ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+/** Level 1 fire: everything left of burnX is scorched, with a wall of flames at the edge. */
+function drawBurn(ctx: CanvasRenderingContext2D, burnX: number, cam: number, tick: number) {
+  const left = Math.max(0, cam - 20);
+  if (burnX > left) {
+    ctx.fillStyle = "rgba(20,8,6,.78)"; ctx.fillRect(left, 0, burnX - left, H);
+    ctx.fillStyle = "rgba(246,127,37,.18)";
+    for (let x = left - (left % 34); x < burnX; x += 34) { const h = 12 + Math.abs(Math.sin((x + tick * 3) / 23)) * 18; ctx.fillRect(x, G - h, 20, h); }
+  }
+  const glow = ctx.createLinearGradient(burnX - 90, 0, burnX + 30, 0);
+  glow.addColorStop(0, "rgba(246,127,37,0)"); glow.addColorStop(0.75, "rgba(246,127,37,.35)"); glow.addColorStop(1, "rgba(251,206,27,0)");
+  ctx.fillStyle = glow; ctx.fillRect(burnX - 90, 0, 120, H);
+  for (let i = 0; i < 9; i++) {
+    const fx = burnX - 6 - i * 9, h = 70 + Math.abs(Math.sin((tick + i * 17) / 6)) * 60 + Math.random() * 14;
+    ctx.fillStyle = i % 3 === 0 ? "#FBCE1B" : i % 3 === 1 ? "#F67F25" : "#C2372B";
+    ctx.beginPath(); ctx.moveTo(fx - 9, G + 4); ctx.quadraticCurveTo(fx - 4, G - h * 0.5, fx + 1, G - h); ctx.quadraticCurveTo(fx + 6, G - h * 0.45, fx + 10, G + 4); ctx.closePath(); ctx.fill();
+  }
+}
+function drawBag(ctx: CanvasRenderingContext2D, b: Bag) {
+  ctx.save(); ctx.translate(b.x + b.w / 2, b.y + b.h / 2); ctx.rotate(b.spin * 0.18);
+  ctx.fillStyle = "#B88A4A"; ctx.beginPath(); ctx.ellipse(0, 3, 13, 11, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#9A6F35"; ctx.beginPath(); ctx.moveTo(-6, -7); ctx.lineTo(6, -7); ctx.lineTo(8, -13); ctx.lineTo(-8, -13); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#6E4B20"; ctx.fillRect(-7, -8, 14, 3);
+  ctx.fillStyle = "#FBCE1B"; ctx.font = "800 13px Poppins, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("$", 0, 4); ctx.textAlign = "left";
+  ctx.restore();
+}
 function drawWall(ctx: CanvasRenderingContext2D, x: number) {
   ctx.fillStyle = "rgba(20,26,63,.9)"; ctx.fillRect(x + 14, 0, 16, G);
   ctx.fillStyle = "#F2F3FA";
@@ -137,6 +244,18 @@ function drawWarnSign(ctx: CanvasRenderingContext2D, wx: number, wy: number) {
   ctx.fillStyle = "#FBCE1B"; ctx.beginPath(); ctx.moveTo(wx + 14, wy); ctx.lineTo(wx + 28, wy + 26); ctx.lineTo(wx, wy + 26); ctx.closePath(); ctx.fill();
   ctx.fillStyle = "#303E7A"; ctx.font = "800 16px Poppins, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
   ctx.fillText("!", wx + 14, wy + 17); ctx.textAlign = "left";
+}
+/** Halfway save point: a short post with a sign. Grey until reached, green after. Never looks like the EOD flag. */
+function drawSavePost(ctx: CanvasRenderingContext2D, x: number, reached: boolean, tick: number) {
+  ctx.fillStyle = "#8D93B5"; ctx.fillRect(x + 11, G - 58, 4, 58);
+  if (reached) {
+    const glow = ctx.createRadialGradient(x + 13, G - 62, 2, x + 13, G - 62, 34);
+    glow.addColorStop(0, `rgba(70,200,138,${0.45 + 0.2 * Math.abs(Math.sin(tick / 10))})`); glow.addColorStop(1, "rgba(70,200,138,0)");
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(x + 13, G - 62, 34, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.fillStyle = reached ? "#1E8E5A" : "#3A4380"; roundRect(ctx, x - 9, G - 76, 44, 22, 6); ctx.fill();
+  ctx.fillStyle = "#fff"; ctx.font = "800 10px Poppins, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(reached ? "SAVED" : "SAVE", x + 13, G - 64); ctx.textAlign = "left";
 }
 function drawFlag(ctx: CanvasRenderingContext2D, x: number, tick: number) {
   ctx.fillStyle = "#E8EAF5"; ctx.fillRect(x + 12, G - 120, 5, 120);
@@ -158,26 +277,40 @@ function drawPlayer(ctx: CanvasRenderingContext2D, s: RunState) {
   ctx.fillRect(ex - 7, y + 12 + squash, 5, 6); ctx.fillRect(ex + 2, y + 12 + squash, 5, 6);
   ctx.fillStyle = "#151A33"; ctx.fillRect(ex - 6 + p.face, y + 14 + squash, 3, 3); ctx.fillRect(ex + 3 + p.face, y + 14 + squash, 3, 3);
 }
-function drawHud(ctx: CanvasRenderingContext2D, s: RunState) {
+function drawHud(ctx: CanvasRenderingContext2D, s: RunState, fx: Fx) {
   ctx.fillStyle = "rgba(14,17,34,.55)"; roundRect(ctx, 14, 14, 350, 48, 10); ctx.fill();
   ctx.fillStyle = "#fff"; ctx.font = "700 15px Poppins, sans-serif"; ctx.textBaseline = "middle";
   ctx.fillText(`Level ${s.li + 1}/3 · ${s.def.name}`, 28, 31);
   const pct = s.phase === "clear" ? 100 : levelPct(s);
   ctx.font = "600 12px 'Open Sans', sans-serif"; ctx.fillStyle = "#C9CEE8";
-  ctx.fillText(`Distance ${pct}/100`, 28, 50);
+  ctx.fillText(`Level reach ${pct}%`, 28, 50);
   ctx.fillStyle = "rgba(255,255,255,.15)"; roundRect(ctx, 150, 45, 200, 7, 4); ctx.fill();
   ctx.fillStyle = "#F67F25"; roundRect(ctx, 150, 45, 2 * pct, 7, 4); ctx.fill();
   ctx.fillStyle = "rgba(14,17,34,.55)"; roundRect(ctx, W - 174, 14, 160, 48, 10); ctx.fill();
   ctx.fillStyle = "#C9CEE8"; ctx.font = "600 11px 'Open Sans', sans-serif"; ctx.textAlign = "right";
-  ctx.fillText("THIS TRY", W - 28, 29);
+  ctx.fillText("SCORE / 300", W - 28, 29);
   ctx.fillStyle = "#FBCE1B"; ctx.font = "800 20px Poppins, sans-serif";
   ctx.fillText(String(currentPoints(s)), W - 28, 48);
   ctx.textAlign = "left";
+  // Level 1: warn before the floor starts burning
+  const bc = s.def.burn;
+  if (bc && s.phase === "play" && s.burnX === null && s.levelFrame >= bc.start - 180) {
+    const secs = Math.ceil((bc.start - s.levelFrame) / 60);
+    ctx.fillStyle = "rgba(194,55,43,.85)"; roundRect(ctx, W / 2 - 130, 74, 260, 36, 10); ctx.fill();
+    ctx.fillStyle = "#fff"; ctx.font = "800 15px Poppins, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(`FLOOR BURNS IN ${secs}… MOVE!`, W / 2, 93); ctx.textAlign = "left";
+  }
+  if (fx.saveToast > 0 && s.phase === "play") {
+    ctx.globalAlpha = Math.min(1, fx.saveToast / 20);
+    ctx.fillStyle = "rgba(30,142,90,.92)"; roundRect(ctx, W / 2 - 130, 74, 260, 36, 10); ctx.fill();
+    ctx.fillStyle = "#fff"; ctx.font = "800 15px Poppins, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("SAVE POINT REACHED", W / 2, 93); ctx.textAlign = "left"; ctx.globalAlpha = 1;
+  }
   if (s.phase === "clear") {
     ctx.fillStyle = "rgba(14,17,34,.6)"; ctx.fillRect(0, H / 2 - 56, W, 112);
     ctx.fillStyle = "#FBCE1B"; ctx.font = "800 40px Poppins, sans-serif"; ctx.textAlign = "center";
     ctx.fillText(s.li === 2 ? "SHIFT COMPLETE" : "LEVEL CLEARED", W / 2, H / 2 - 12);
     ctx.fillStyle = "#fff"; ctx.font = "600 17px 'Open Sans', sans-serif";
-    ctx.fillText("+100 distance  +25 bonus", W / 2, H / 2 + 26); ctx.textAlign = "left";
+    ctx.fillText(s.li === 2 ? "300 / 300" : `Score ${(s.li + 1) * 100}. Level ${s.li + 2} counts ${(s.li + 1) * 100 + 1} to ${(s.li + 2) * 100}`, W / 2, H / 2 + 26); ctx.textAlign = "left";
   }
 }

@@ -19,6 +19,9 @@ import { useRouter } from "next/navigation";
 import {
   H,
   InputRecorder,
+  MAX_ATTEMPTS_PER_DAY,
+  MAX_SCORE,
+  REPLAY_VERSION,
   STEP_HZ,
   W,
   createRun,
@@ -28,8 +31,20 @@ import {
   type Route,
   type RunState,
 } from "@/lib/trapshift/trapShiftCore";
-import { Fx, drawFrame } from "@/lib/trapshift/trapShiftRender";
+import { Fx, drawFrame, loadMonsterImage } from "@/lib/trapshift/trapShiftRender";
 import type { TrapRailRow, TrapSession } from "@/lib/trapshift/game";
+import { dismissTrapShiftNewRulesAction } from "@/app/va/games/actions";
+
+/** Save point names, by number (0 L1 start .. 5 L3 half). */
+const SAVE_POINT_NAMES = [
+  "Level 1 start",
+  "Level 1 halfway",
+  "Level 2 start",
+  "Level 2 halfway",
+  "Level 3 start",
+  "Level 3 halfway",
+];
+const MONSTER_SRC = "/games/trap-shift/collector.webp";
 
 export const TAUNTS: Record<string, string[]> = {
   fake:   ["That floor was a contractor. It quit.", "Did you really trust that floor?", "Floor said: not my job."],
@@ -42,6 +57,10 @@ export const TAUNTS: Record<string, string[]> = {
   thrown: ["Someone threw a task at you.", "Catch! No wait, dodge.", "Incoming from management."],
   launch: ["You overstayed on the cabinet. It filed you away.", "Cabinet launched you into next week.", "No sitting on the furniture."],
   wall:   ["The spike wall stops just short of the left edge. Just saying.", "Should have hugged the left wall.", "Wall of tasks: 1. You: 0."],
+  bag:     ["The Collector always gets paid.", "That bag had your name on it.", "Bonus received. Directly to the face."],
+  decoy:   ["That wasn't the EOD flag. That was a trap holding a flag.", "Fake deadline. Real consequences.", "Not every finish line is real."],
+  monster: ["You touched The Collector. Bold.", "Don't high-five the debt collector.", "It bites. Obviously."],
+  burn:    ["The floor got fired. So did you.", "You stood still. The office caught fire.", "Burnout. Literally."],
 };
 
 const STEP_S = 1 / STEP_HZ;
@@ -72,11 +91,13 @@ export interface TrapShiftProps {
   initialRail: TrapRailRow[];
   /** e.g. "November Season" */
   seasonLabel: string;
+  /** One-time v3 "new rules" banner, until this VA dismisses it. */
+  showNewRules: boolean;
 }
 
 const triesLine = (left: number) =>
   left <= 0
-    ? "You used all 3 tries today. Come back tomorrow."
+    ? `You used all ${MAX_ATTEMPTS_PER_DAY} tries today. Come back tomorrow.`
     : left === 1
       ? "You have 1 try left today."
       : `You have ${left} tries left today.`;
@@ -85,7 +106,7 @@ function pick<T>(list: T[]): T {
   return list[Math.floor(Math.random() * list.length)];
 }
 
-export default function TrapShift({ initialSession, initialRail, seasonLabel }: TrapShiftProps) {
+export default function TrapShift({ initialSession, initialRail, seasonLabel, showNewRules }: TrapShiftProps) {
   const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
@@ -105,7 +126,8 @@ export default function TrapShift({ initialSession, initialRail, seasonLabel }: 
   const [session, setSession] = useState(initialSession);
   const [rail, setRail] = useState(initialRail);
   const [view, setView] = useState<View>("lobby");
-  const [intro, setIntro] = useState({ n: 1, name: "", tip: "" });
+  const [intro, setIntro] = useState({ n: 1, name: "", tip: "", from: "" });
+  const [newRules, setNewRules] = useState(showNewRules);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -163,12 +185,18 @@ export default function TrapShift({ initialSession, initialRail, seasonLabel }: 
         // Only the try id and the inputs. The server computes the score.
         body: JSON.stringify({ runId, log: rec.log }),
       });
-      const body = (await res.json().catch(() => null)) as { score?: number; error?: string } | null;
+      const body = (await res.json().catch(() => null)) as
+        | { score?: number; nextStartCp?: number; error?: string }
+        | null;
       setOutcome((o) =>
         o && (res.ok
           ? { ...o, serverScore: body?.score ?? 0, checking: false }
           : { ...o, checking: false, error: body?.error ?? "That try couldn’t be recorded." }),
       );
+      if (res.ok && typeof body?.nextStartCp === "number") {
+        const next = body.nextStartCp;
+        setSession((cur) => ({ ...cur, nextStartCp: next }));
+      }
     } catch {
       setOutcome((o) => o && { ...o, checking: false, error: "Couldn’t reach the server — this try wasn’t recorded." });
     }
@@ -210,7 +238,7 @@ export default function TrapShift({ initialSession, initialRail, seasonLabel }: 
           } else if (s.levelJustStarted) {
             phaseRef.current = "paused";
             accRef.current = 0;
-            setIntro({ n: s.li + 1, name: s.def.name, tip: s.def.tip });
+            setIntro({ n: s.li + 1, name: s.def.name, tip: s.def.tip, from: "" });
             setView("intro");
             break;
           }
@@ -236,16 +264,35 @@ export default function TrapShift({ initialSession, initialRail, seasonLabel }: 
     setBusy(true);
     setError("");
     try {
-      const res = await fetch("/api/minigame/start", { method: "POST" });
+      const res = await fetch("/api/minigame/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // The core version this page plays. The server picks the save point.
+        body: JSON.stringify({ clientVersion: REPLAY_VERSION }),
+      });
       const body = (await res.json().catch(() => null)) as
-        | { runId: string; seed: number; routes: Route[]; attemptNo: number; attemptsLeft: number; error?: string }
+        | {
+            runId: string;
+            seed: number;
+            routes: Route[];
+            attemptNo: number;
+            attemptsLeft: number;
+            startCp: number;
+            error?: string;
+            code?: string;
+          }
         | null;
+      // This page is running an older core than the server: no try was used.
+      if (res.status === 409 && body?.code === "update_required") {
+        window.location.reload();
+        return;
+      }
       if (!res.ok || !body) {
         setError(body?.error ?? "That try couldn’t be started.");
         await refresh().catch(() => {});
         return;
       }
-      const s = createRun(body.seed, body.routes);
+      const s = createRun(body.seed, body.routes, body.startCp);
       runRef.current = s;
       recRef.current = new InputRecorder();
       fxRef.current = new Fx();
@@ -256,8 +303,13 @@ export default function TrapShift({ initialSession, initialRail, seasonLabel }: 
       setOutcome(null);
       window.addEventListener("pagehide", sendBeacon);
 
-      phaseRef.current = "paused"; // level 1 intro first
-      setIntro({ n: 1, name: s.def.name, tip: s.def.tip });
+      phaseRef.current = "paused"; // intro of the level this try starts on
+      setIntro({
+        n: s.li + 1,
+        name: s.def.name,
+        tip: s.def.tip,
+        from: body.startCp > 0 ? SAVE_POINT_NAMES[body.startCp] : "",
+      });
       setView("intro");
       lastRef.current = performance.now();
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -287,7 +339,12 @@ export default function TrapShift({ initialSession, initialRail, seasonLabel }: 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     cv.width = W * dpr;
     cv.height = H * dpr;
-    drawFrame(ctx, cv.width, createRun(1, [0, 0, 0], false), new Fx(), { showHud: false });
+    drawFrame(ctx, cv.width, createRun(1, [0, 0, 0], 0, false), new Fx(), { showHud: false });
+  }, []);
+
+  // The Collector art. Never blocks Start: a drawn placeholder head is used until it loads.
+  useEffect(() => {
+    void loadMonsterImage(MONSTER_SRC);
   }, []);
 
   // Overlay buttons stay disabled for a moment after they appear.
@@ -349,8 +406,8 @@ export default function TrapShift({ initialSession, initialRail, seasonLabel }: 
   });
 
   const dots = (
-    <span className="ts-dots" aria-label={`${session.attemptsLeft} of 3 tries left`}>
-      {[0, 1, 2].map((i) => (
+    <span className="ts-dots" aria-label={`${session.attemptsLeft} of ${MAX_ATTEMPTS_PER_DAY} tries left`}>
+      {Array.from({ length: MAX_ATTEMPTS_PER_DAY }, (_, i) => (
         <i key={i} className={i < session.attemptsLeft ? "ts-on" : ""} />
       ))}
     </span>
@@ -363,6 +420,24 @@ export default function TrapShift({ initialSession, initialRail, seasonLabel }: 
   return (
     <div className="ts-root">
       <style>{CSS}</style>
+      {newRules && (
+        <div className="ts-news" role="status">
+          <p>
+            New rules: {MAX_ATTEMPTS_PER_DAY} tries a day, save points that reset daily, and your score is
+            how far you get (up to {MAX_SCORE}). The leaderboard starts fresh. Also, the floor is on fire.
+          </p>
+          <button
+            type="button"
+            className="ts-btn"
+            onClick={() => {
+              setNewRules(false);
+              void dismissTrapShiftNewRulesAction().catch(() => {});
+            }}
+          >
+            Got it
+          </button>
+        </div>
+      )}
       <div className="ts-wrap">
         <div className="ts-main">
           <div className="ts-cab">
@@ -381,7 +456,7 @@ export default function TrapShift({ initialSession, initialRail, seasonLabel }: 
                     <>
                       <p className="ts-eyebrow">Shift not started</p>
                       <h2>Send your Start of Day to unlock today’s tries</h2>
-                      <p>Your three tries open once today’s Start of Day is in, with your tasks saved.</p>
+                      <p>Your {MAX_ATTEMPTS_PER_DAY} tries open once today’s Start of Day is in, with your tasks saved.</p>
                       <button className="ts-btn" disabled={!armed} onClick={() => router.push("/va")}>
                         Go to My Day
                       </button>
@@ -393,15 +468,23 @@ export default function TrapShift({ initialSession, initialRail, seasonLabel }: 
                       <p className="ts-eyebrow">Trap Shift · {seasonLabel}</p>
                       <h2>Three levels. Zero trust.</h2>
                       <p>
-                        Run right, reach the EOD flag. Floors fall, spikes pop, cabinets drop, and
-                        somebody keeps throwing spikes. One life per try. You can double jump. The
-                        traps know.
+                        Run right, reach the EOD flag. In Level 1 the floor behind you starts burning
+                        after 5 seconds, so keep moving. In Levels 2 and 3 The Collector floats overhead
+                        throwing money bags. Watch for the red X. Not every flag is the real one. One
+                        life per try. You can double jump.
+                      </p>
+                      <p className="ts-small">
+                        Save points: halfway through each level, and the start of each level you clear.
+                        Your next try starts from the furthest one you reached today. They reset every day.
                       </p>
                       {dots}
                       <p className="ts-strong">{triesLine(session.attemptsLeft)}</p>
+                      {session.attemptsLeft > 0 && (
+                        <p className="ts-strong">Next try starts at: {SAVE_POINT_NAMES[session.nextStartCp]}</p>
+                      )}
                       <div className="ts-final">
                         <div><span className="n g">{session.todayBest ?? "—"}</span><span className="l">Today’s best</span></div>
-                        <div><span className="n">{session.seasonTotal}</span><span className="l">Season total</span></div>
+                        <div><span className="n">{session.seasonBest ?? "—"}</span><span className="l">Season best</span></div>
                       </div>
                       <button
                         className="ts-btn"
@@ -416,7 +499,7 @@ export default function TrapShift({ initialSession, initialRail, seasonLabel }: 
                       </button>
                       {error && <p className="ts-warn ts-err">{error}</p>}
                       <p className="ts-small">
-                        Best try of the day counts toward your season total. Leaving mid-run uses up that try.
+                        Your best try counts. Leaving mid-run uses up that try.
                       </p>
                     </>
                   )}
@@ -425,6 +508,7 @@ export default function TrapShift({ initialSession, initialRail, seasonLabel }: 
                     <>
                       <p className="ts-eyebrow">Level {intro.n} of 3</p>
                       <h2>{intro.name}</h2>
+                      {intro.from && <p className="ts-strong">Starting from your save point: {intro.from}</p>}
                       <p className="ts-tip">{intro.tip}</p>
                       <button className="ts-btn" disabled={!armed} onClick={go}>Go</button>
                     </>
@@ -436,7 +520,7 @@ export default function TrapShift({ initialSession, initialRail, seasonLabel }: 
                       <h2>{outcome.won ? "Shift complete!" : outcome.taunt}</h2>
                       <div className="ts-final">
                         <div>
-                          <span className="n g">{shownScore}</span>
+                          <span className="n g">{shownScore} / {MAX_SCORE}</span>
                           <span className="l">
                             {outcome.checking ? "Checking…" : outcome.error ? "Not recorded" : "Score"}
                           </span>
@@ -444,7 +528,7 @@ export default function TrapShift({ initialSession, initialRail, seasonLabel }: 
                       </div>
                       <p>
                         {outcome.won
-                          ? "All three levels cleared. Perfect try."
+                          ? `All three levels cleared. ${MAX_SCORE} out of ${MAX_SCORE}.`
                           : `You made it ${outcome.pct}% through Level ${outcome.level}: ${outcome.levelName}.`}
                       </p>
                       {outcome.error && <p className="ts-warn ts-err">{outcome.error}</p>}
@@ -455,6 +539,9 @@ export default function TrapShift({ initialSession, initialRail, seasonLabel }: 
                           : `${session.attemptsLeft} ${session.attemptsLeft === 1 ? "try" : "tries"} left today.`}
                       </p>
                       <p>Today’s best: {session.todayBest ?? "—"}</p>
+                      {session.attemptsLeft > 0 && !outcome.checking && (
+                        <p className="ts-strong">Next try starts at: {SAVE_POINT_NAMES[session.nextStartCp]}</p>
+                      )}
                       <button className="ts-btn" disabled={!armed || outcome.checking} onClick={() => setView("lobby")}>
                         Back to lobby
                       </button>
@@ -478,14 +565,20 @@ export default function TrapShift({ initialSession, initialRail, seasonLabel }: 
             <h3>{seasonLabel}</h3>
             {rail.length > 0 ? (
               <ol className="ts-lb">
+                <li className="ts-head" aria-hidden="true">
+                  <span className="rk">#</span>
+                  <span className="nm">VA</span>
+                  <span className="sc">Best</span>
+                  <span className="rc">Reached</span>
+                  <span className="td">Today</span>
+                </li>
                 {rail.map((r) => (
                   <li key={`${r.rank}-${r.name}`} className={`${r.rank === 1 ? "ts-top " : ""}${r.isYou ? "ts-you" : ""}`}>
                     <span className="rk">{r.rank}</span>
-                    <span className="nm">
-                      {r.name}
-                      {r.todayBest !== null && <span className="pf"> today {r.todayBest}</span>}
-                    </span>
-                    <span className="sc">{r.seasonTotal}</span>
+                    <span className="nm">{r.name}</span>
+                    <span className="sc">{r.best}</span>
+                    <span className="rc">{r.reached}</span>
+                    <span className="td">{r.todayBest ?? "—"}</span>
                   </li>
                 ))}
               </ol>
@@ -497,13 +590,13 @@ export default function TrapShift({ initialSession, initialRail, seasonLabel }: 
           <div className="ts-card">
             <h3>Scoring</h3>
             <ul className="ts-score">
-              <li><span>Distance reached in a level</span><b>0 to 100</b></li>
-              <li><span>Level solved</span><b>100 + 25 bonus</b></li>
-              <li><span>Perfect try</span><b>375</b></li>
-              <li><span>Tries per day</span><b>3</b></li>
+              <li><span>Level 1, by how far you get</span><b>0 to 100</b></li>
+              <li><span>Level 2</span><b>101 to 200</b></li>
+              <li><span>Level 3</span><b>201 to 300</b></li>
+              <li><span>Tries per day</span><b>{MAX_ATTEMPTS_PER_DAY}</b></li>
             </ul>
             <p className="ts-note">
-              Your best try of the day becomes your daily score. Daily scores add up into your season total.
+              Your best single try is your leaderboard score. Ties go to the faster run.
             </p>
           </div>
         </div>
@@ -574,8 +667,18 @@ const CSS = `
   color:#d5daeb;margin:0;padding:10px 13px;background:#293568;border-bottom:1px solid var(--ts-line)}
 .ts-empty{margin:0;padding:11px 13px;font-size:12px;color:var(--ts-muted)}
 .ts-lb{list-style:none;margin:0;padding:3px 0}
-.ts-lb li{display:grid;grid-template-columns:20px 1fr auto;align-items:center;gap:9px;padding:6px 13px;
+.ts-lb li{display:grid;grid-template-columns:16px minmax(0,1fr) 28px 82px 30px;align-items:center;gap:6px;padding:6px 10px;
   font-size:12.5px;border-left:3px solid transparent}
+.ts-lb .sc,.ts-lb .td{text-align:right}
+.ts-lb .rc{font-size:10.5px;color:#d5daeb;white-space:nowrap}
+.ts-lb .td{font-size:11px;color:var(--ts-muted);font-variant-numeric:tabular-nums}
+.ts-lb li.ts-head{font-family:var(--ts-display);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ts-muted)}
+.ts-lb li.ts-head span{font-weight:600;color:var(--ts-muted);font-size:9.5px}
+.ts-news{display:flex;align-items:center;gap:14px;margin:0 0 14px;padding:12px 14px;border-radius:12px;
+  background:#303E7A;color:#E9ECF9;border:1px solid rgba(251,206,27,.45);
+  font-family:var(--font-open-sans),"Open Sans","Segoe UI",system-ui,sans-serif;font-size:14px}
+.ts-news p{margin:0;flex:1}
+.ts-news .ts-btn{font-size:14px;padding:8px 18px;flex:none}
 .ts-lb li + li{border-top:1px solid var(--ts-line)}
 .ts-lb .rk{font-family:var(--ts-display);font-weight:600;color:var(--ts-muted);font-size:11px;font-variant-numeric:tabular-nums}
 .ts-lb .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
