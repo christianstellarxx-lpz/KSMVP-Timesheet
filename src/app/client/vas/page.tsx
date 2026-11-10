@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireAdmin, isFullAdmin, roleLabel, type Role } from "@/lib/session";
 import { getTeamMembers, type TeamMember } from "@/lib/vas";
 import { AddVaButton } from "@/components/client/AddVaButton";
+import { UserAvatar } from "@/components/UserAvatar";
 import { DeleteButton } from "@/components/client/DeleteButton";
 import { removeMemberAction, restoreMemberAction } from "@/app/client/actions";
 
@@ -35,12 +36,7 @@ export default async function TeamPage() {
         {members.map((m) => (
           <li key={m.id} className="card p-4">
             <div className="flex items-start gap-3">
-              <span
-                aria-hidden
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand-blue-600 text-xs font-heading font-bold text-white"
-              >
-                {initials(m.name)}
-              </span>
+              <UserAvatar name={m.name} className="h-9 w-9 text-xs" />
               <div className="min-w-0 flex-1">
                 <p className="font-heading font-semibold text-[var(--text)]">
                   {m.name}
@@ -99,12 +95,7 @@ export default async function TeamPage() {
               <tr key={m.id} className="hover:bg-[var(--surface-muted)]/60">
                 <td className="px-4 py-3 sm:px-5">
                   <div className="flex items-center gap-3">
-                    <span
-                      aria-hidden
-                      className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-blue-600 text-xs font-heading font-bold text-white"
-                    >
-                      {initials(m.name)}
-                    </span>
+                    <UserAvatar name={m.name} className="h-8 w-8 text-xs" />
                     <div>
                       <p className="font-heading font-semibold text-[var(--text)]">
                         {m.name}
@@ -217,14 +208,4 @@ function RoleBadge({ role }: { role: Role }) {
     INTERN: "bg-[var(--surface-muted)] text-[var(--text-muted)]",
   };
   return <span className={`chip ${cls[role]}`}>{roleLabel(role)}</span>;
-}
-
-function initials(name: string): string {
-  return name
-    .split(" ")
-    .map((p) => p[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
 }

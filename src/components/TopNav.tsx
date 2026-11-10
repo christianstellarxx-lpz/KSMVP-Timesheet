@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Logo } from "./Logo";
+import { UserAvatar } from "./UserAvatar";
 import { NavLinks, type NavItem } from "./NavLinks";
 import { logoutAction } from "@/app/login/actions";
 import { roleLabel, type SessionUser } from "@/lib/session";
@@ -12,14 +13,6 @@ export function TopNav({
   session: SessionUser;
   navItems?: NavItem[];
 }) {
-  const initials = session.name
-    .split(" ")
-    .map((p) => p[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-
   return (
     <header className="sticky top-0 z-30 bg-brand-blue-600 text-white shadow-sm">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
@@ -46,12 +39,7 @@ export function TopNav({
                 {session.title || roleLabel(session.role)}
               </p>
             </div>
-            <span
-              aria-hidden
-              className="grid h-9 w-9 place-items-center rounded-full bg-white/15 text-xs font-heading font-bold"
-            >
-              {initials}
-            </span>
+            <UserAvatar name={session.name} className="h-9 w-9 text-xs" fallbackClassName="bg-white/15" />
           </Link>
           <form action={logoutAction}>
             <button
