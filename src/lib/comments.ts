@@ -1,6 +1,9 @@
 import "server-only";
+import { after } from "next/server";
 import { prisma } from "./prisma";
-import { formatEtDateTime } from "./time";
+import { env } from "./env";
+import { sendEmail } from "./email";
+import { formatEtDateLong, formatEtDateTime, storageDateToEtDateString } from "./time";
 import type { CommentInput } from "./validation";
 
 export type CommentTarget = "START" | "END" | "GENERAL";
@@ -72,18 +75,37 @@ export async function addComment(
 ): Promise<AddCommentResult> {
   const entry = await prisma.timeEntry.findUnique({
     where: { id: input.entryId },
-    select: { id: true },
+    select: { id: true, workDate: true, va: { select: { email: true, name: true } } },
   });
   if (!entry) return { ok: false, message: "That entry could not be found." };
 
-  await prisma.comment.create({
+  const comment = await prisma.comment.create({
     data: {
       entryId: input.entryId,
       authorId,
       target: input.target,
       body: input.body,
     },
+    select: { author: { select: { name: true, role: true } } },
   });
+
+  // Only full admins (Kevin, Tanya) trigger an email — VA admins (Kristine) don't.
+  // Sent after the response, so the admin's click never waits on Resend.
+  if (comment.author.role === "ADMIN") after(() =>
+    sendEmail(
+      entry.va.email,
+      `New feedback from ${comment.author.name}`,
+      [
+        `Hi ${entry.va.name.split(" ")[0]},`,
+        "",
+        `${comment.author.name} left feedback on your ${targetLabel(input.target)} for ${formatEtDateLong(storageDateToEtDateString(entry.workDate))}:`,
+        "",
+        input.body,
+        "",
+        `Open My Day: ${env.appUrl}/va`,
+      ].join("\n"),
+    ),
+  );
   return { ok: true };
 }
 

@@ -28,4 +28,16 @@ export const env = {
   get geminiModel(): string {
     return process.env.GEMINI_MODEL?.trim() || "gemini-3.5-flash-lite";
   },
+  /** Optional. Without it (or EMAIL_FROM), feedback emails are skipped. */
+  get resendApiKey(): string | null {
+    return process.env.RESEND_API_KEY?.trim() || null;
+  },
+  /** Sender on your verified Resend domain, e.g. "KSMVP Tasks <notifications@yourdomain.com>". */
+  get emailFrom(): string | null {
+    return process.env.EMAIL_FROM?.trim() || null;
+  },
+  /** Public address of the app, used for the link in emails. */
+  get appUrl(): string {
+    return (process.env.APP_URL?.trim() || "https://ksmvp-task.vercel.app").replace(/\/$/, "");
+  },
 };
