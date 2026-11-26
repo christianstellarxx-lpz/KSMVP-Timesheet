@@ -65,6 +65,8 @@ export interface VaDayState {
   stale: EntryDTO[];
   /** Entries that have admin feedback, most recent first. */
   feedback: FeedbackEntryDTO[];
+  /** Every entry with admin feedback, read or not (latest 60) — the "Feedback history" view. */
+  feedbackHistory: FeedbackEntryDTO[];
   /** How many received comments the VA hasn't seen yet (drives the notification). */
   unreadCommentCount: number;
   /** Today's tasks from the weekly planner — prefills Start of Day. */
@@ -161,7 +163,7 @@ export async function getVaDayState(vaId: string): Promise<VaDayState> {
   const today = etToday();
   const todayStorage = etDateStringToStorageDate(today);
 
-  const [staleRows, todayEntry, commentedRows, todayPlan] = await Promise.all([
+  const [staleRows, todayEntry, commentedRows, todayPlan, historyRows] = await Promise.all([
     prisma.timeEntry.findMany({
       where: { vaId, status: "INCOMPLETE" },
       orderBy: { workDate: "desc" },
@@ -183,9 +185,16 @@ export async function getVaDayState(vaId: string): Promise<VaDayState> {
       where: { vaId_workDate: { vaId, workDate: todayStorage } },
       select: { startOfDayTasks: true },
     }),
+    // Read feedback too, so a VA who pressed "Done" can still find it.
+    prisma.timeEntry.findMany({
+      where: { vaId, comments: { some: {} } },
+      include: commentInclude,
+      orderBy: { workDate: "desc" },
+      take: 60,
+    }),
   ]);
 
-  const feedback: FeedbackEntryDTO[] = commentedRows.map((r) => {
+  const toFeedback = (r: (typeof commentedRows)[number]): FeedbackEntryDTO => {
     const workDate = storageDateToEtDateString(r.workDate);
     return {
       entryId: r.id,
@@ -194,7 +203,8 @@ export async function getVaDayState(vaId: string): Promise<VaDayState> {
       entryType: r.entryType as FeedbackEntryDTO["entryType"],
       comments: r.comments.map(toCommentDTO),
     };
-  });
+  };
+  const feedback = commentedRows.map(toFeedback);
 
   const unreadCommentCount = feedback.reduce(
     (sum, f) => sum + f.comments.filter((c) => c.unread).length,
@@ -207,6 +217,7 @@ export async function getVaDayState(vaId: string): Promise<VaDayState> {
     todayEntry: todayEntry ? toDTO(todayEntry) : null,
     stale: staleRows.map(toDTO),
     feedback,
+    feedbackHistory: historyRows.map(toFeedback),
     unreadCommentCount,
     todayPlan: todayPlan?.startOfDayTasks ?? null,
   };

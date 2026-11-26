@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { acknowledgeCommentsAction } from "@/app/va/actions";
 import type { FeedbackEntryDTO } from "@/lib/timeEntries";
+import { Modal } from "@/components/Modal";
 
 export function AdminFeedback({
   feedback,
@@ -96,6 +97,39 @@ export function AdminFeedback({
         </div>
       </header>
 
+      <FeedbackList feedback={feedback} />
+    </section>
+  );
+}
+
+/** Every admin note the VA has received, read or not — nothing is ever lost by pressing "Done". */
+export function FeedbackHistoryModal({
+  feedback,
+  onClose,
+}: {
+  feedback: FeedbackEntryDTO[];
+  onClose: () => void;
+}) {
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Feedback history"
+      description="All notes from your admins, newest day first."
+    >
+      {feedback.length === 0 ? (
+        <p className="text-sm text-[var(--text-muted)]">No feedback yet.</p>
+      ) : (
+        <div className="-mx-5 -my-5 sm:-mx-6">
+          <FeedbackList feedback={feedback} />
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function FeedbackList({ feedback }: { feedback: FeedbackEntryDTO[] }) {
+  return (
       <div className="divide-y divide-[var(--border)]">
         {feedback.map((entry) => (
           <div key={entry.entryId} className="px-4 py-3 sm:px-5">
@@ -134,7 +168,6 @@ export function AdminFeedback({
           </div>
         ))}
       </div>
-    </section>
   );
 }
 

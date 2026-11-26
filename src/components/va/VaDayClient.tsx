@@ -14,7 +14,7 @@ import { EndDayModal } from "./EndDayModal";
 import { ResolveStaleModal } from "./ResolveStaleModal";
 import { PtoModal } from "./PtoModal";
 import { WeekPlanModal } from "./WeekPlanModal";
-import { AdminFeedback } from "./AdminFeedback";
+import { AdminFeedback, FeedbackHistoryModal } from "./AdminFeedback";
 import { EditableTask } from "./EditableTask";
 
 export function VaDayClient({
@@ -43,7 +43,7 @@ export function VaDayClient({
       ? state.todayEntry
       : null;
 
-  const [modal, setModal] = useState<"start" | "end" | "pto" | "plan" | null>(null);
+  const [modal, setModal] = useState<"start" | "end" | "pto" | "plan" | "history" | null>(null);
   const [resolveEntry, setResolveEntry] = useState<EntryDTO | null>(null);
   const [dismissedStale, setDismissedStale] = useState(false);
 
@@ -172,6 +172,14 @@ export function VaDayClient({
           <span aria-hidden>🌴</span>
           Log PTO / Vacation day
         </button>
+        <button
+          type="button"
+          onClick={() => setModal("history")}
+          className="btn-ghost"
+        >
+          <span aria-hidden>💬</span>
+          Feedback history
+        </button>
       </div>
 
       {/* This month's rotating game lives on the Games page, alongside the
@@ -236,6 +244,12 @@ export function VaDayClient({
           open={!!resolveEntry}
           onClose={() => setResolveEntry(null)}
           entry={resolveEntry}
+        />
+      )}
+      {modal === "history" && (
+        <FeedbackHistoryModal
+          feedback={state.feedbackHistory}
+          onClose={() => setModal(null)}
         />
       )}
       {modal === "pto" && (
